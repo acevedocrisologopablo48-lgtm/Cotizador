@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "framework": "nextjs",
+  "installCommand": "cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm --filter frontend build",
+  "outputDirectory": ".next",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://fym-backend-production.up.railway.app/api/v1"
+  }
+}

@@ -1,0 +1,51 @@
+import { Injectable } from '@nestjs/common';
+import { FirebaseService } from '../../common/firebase/firebase.service';
+
+@Injectable()
+export class QuotationCalculatorService {
+  constructor(private firebase: FirebaseService) {}
+
+  async recalculateQuotation(quotationId: string) {
+    const qRef = this.firebase.db.collection('quotations').doc(quotationId);
+    const qDoc = await qRef.get();
+    if (!qDoc.exists) return null;
+
+    const quotation = qDoc.data()!;
+    const sectionsSnap = await qRef.collection('sections').get();
+    const batch = this.firebase.db.batch();
+
+    let grandSubtotal = 0;
+
+    for (const sectionDoc of sectionsSnap.docs) {
+      const itemsSnap = await sectionDoc.ref.collection('items').get();
+      let sectionSubtotal = 0;
+
+      for (const itemDoc of itemsSnap.docs) {
+        const item = itemDoc.data();
+        const itemSubtotal = Number(item.quantity || 0) * Number(item.unitPrice ?? item.unitCost ?? 0);
+        
+        batch.update(itemDoc.ref, { subtotal: itemSubtotal });
+        sectionSubtotal += itemSubtotal;
+      }
+
+      batch.update(sectionDoc.ref, { subtotal: sectionSubtotal });
+      grandSubtotal += sectionSubtotal;
+    }
+
+    const gePercentage = Number(quotation.generalExpensesPercentage || 0);
+    const profitPercentage = Number(quotation.profitMarginPercentage || 0);
+    
+    const geAmount = (grandSubtotal * gePercentage) / 100;
+    const profitAmount = (grandSubtotal * profitPercentage) / 100;
+
+    const subtotal = grandSubtotal + geAmount + profitAmount;
+    const igvPercentage = Number(quotation.igvPercentage || 18);
+    const igvAmount = (subtotal * igvPercentage) / 100;
+    const total = subtotal + igvAmount;
+
+    batch.update(qRef, { subtotal, igv: igvAmount, igvAmount, total });
+    await batch.commit();
+
+    return { message: 'Recalculado correctamente', total };
+  }
+}

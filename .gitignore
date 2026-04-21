@@ -1,0 +1,10 @@
+.vercel
+.env*.local
+.env
+node_modules/
+dist/
+.next/
+out/
+build/
+*.log
+.firebase/
