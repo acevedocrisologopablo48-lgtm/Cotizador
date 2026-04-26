@@ -19,8 +19,12 @@ export class QuotationsService {
     search?: string;
     status?: string;
     companyId?: string;
+    tipo?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    contactId?: string;
   }) {
-    const { page: rawPage, pageSize: rawPageSize, search, status, companyId } = params;
+    const { page: rawPage, pageSize: rawPageSize, search, status, companyId, tipo, dateFrom, dateTo, contactId } = params;
     const page = Number(rawPage) || 1;
     const pageSize = Number(rawPageSize) || 20;
 
@@ -56,6 +60,25 @@ export class QuotationsService {
         (item.title || '').toLowerCase().includes(s) ||
         (item.company?.tradeName || '').toLowerCase().includes(s)
       );
+    }
+
+    if (tipo) {
+      data = data.filter((item: any) => item.tipo === tipo);
+    }
+
+    if (contactId) {
+      data = data.filter((item: any) => item.contactId === contactId);
+    }
+
+    if (dateFrom || dateTo) {
+      const from = dateFrom ? new Date(dateFrom) : null;
+      const to = dateTo ? new Date(new Date(dateTo).setHours(23, 59, 59, 999)) : null;
+      data = data.filter((item: any) => {
+        const created = item.createdAt instanceof Date ? item.createdAt : new Date(item.createdAt);
+        if (from && created < from) return false;
+        if (to && created > to) return false;
+        return true;
+      });
     }
 
     return { data, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };

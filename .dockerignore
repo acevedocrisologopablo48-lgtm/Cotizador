@@ -1,0 +1,16 @@
+packages/frontend
+packages/frontend/**
+node_modules
+**/node_modules
+**/.next
+**/out
+.git
+.gitignore
+*.md
+scripts
+firebase.json
+firestore.indexes.json
+vercel.json
+railway.toml
+sa-key.json
+cloud-run-env.yaml

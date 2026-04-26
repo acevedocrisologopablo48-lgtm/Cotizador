@@ -16,7 +16,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/packages/backend/node_modules ./packages/backend/node_modules
 COPY . .
-# Build shared first, then backend
 RUN pnpm --filter shared build || true
 RUN pnpm --filter backend build
 

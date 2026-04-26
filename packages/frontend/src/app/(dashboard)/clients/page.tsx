@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, Building2, Pencil } from 'lucide-react';
 
 interface Company {
   id: string;
@@ -40,7 +40,8 @@ interface CompaniesResponse {
 }
 
 export default function ClientsPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const canEdit = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'ENGINEER';
   const [companies, setCompanies] = useState<Company[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
   const [search, setSearch] = useState('');
@@ -126,20 +127,21 @@ export default function ClientsPage() {
               <TableHead className="text-center">Cotizaciones</TableHead>
               <TableHead className="text-center">Proyectos</TableHead>
               <TableHead>Estado</TableHead>
+              <TableHead className="w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableSkeleton rows={6} columns={7} />
+              <TableSkeleton rows={6} columns={8} />
             ) : loadError ? (
               <TableError
-                colSpan={7}
+                colSpan={8}
                 message={loadError}
                 onRetry={() => fetchCompanies(meta.page, search)}
               />
             ) : companies.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Building2 className="h-8 w-8" />
                     <p>No se encontraron clientes</p>
@@ -173,6 +175,15 @@ export default function ClientsPage() {
                     <Badge variant={company.isActive ? 'default' : 'secondary'}>
                       {company.isActive ? 'Activo' : 'Inactivo'}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {canEdit && (
+                      <Link href={`/clients/${company.id}?edit=true`}>
+                        <Button variant="ghost" size="icon" title="Editar cliente">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

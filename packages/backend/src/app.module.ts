@@ -8,6 +8,7 @@ import { PricingModule } from './pricing/pricing.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { ProjectsModule } from './projects/projects.module';
 import { PettyCashModule } from './petty-cash/petty-cash.module';
+import { AppConfigModule } from './app-config/app-config.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { PettyCashModule } from './petty-cash/petty-cash.module';
     QuotationsModule,
     ProjectsModule,
     PettyCashModule,
+    AppConfigModule,
   ],
   providers: [],
 })

@@ -17,6 +17,10 @@ export class QuotationsController {
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('companyId') companyId?: string,
+    @Query('tipo') tipo?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('contactId') contactId?: string,
   ) {
     return this.quotationsService.findAll({
       page: page ? parseInt(page) : undefined,
@@ -24,6 +28,10 @@ export class QuotationsController {
       search,
       status,
       companyId,
+      tipo,
+      dateFrom,
+      dateTo,
+      contactId,
     });
   }
 
@@ -42,6 +50,12 @@ export class QuotationsController {
   @Put(':id')
   @Roles('ADMIN', 'MANAGER', 'ENGINEER')
   update(@Param('id') id: string, @Body() dto: any) {
+    return this.quotationsService.update(id, dto);
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN', 'MANAGER', 'ENGINEER')
+  patch(@Param('id') id: string, @Body() dto: any) {
     return this.quotationsService.update(id, dto);
   }
 

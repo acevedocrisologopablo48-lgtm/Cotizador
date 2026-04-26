@@ -1,6 +1,8 @@
 import ClientDetailPage from './client-page';
 
-export const dynamic = 'force-dynamic';
+export function generateStaticParams() {
+  return [{ id: '_' }];
+}
 
 export default function Page() {
   return <ClientDetailPage />;

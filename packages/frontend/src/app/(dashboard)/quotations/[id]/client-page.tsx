@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +17,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Plus, Trash2, Pencil, Calculator, FileText, Printer, DollarSign, Info, Package, FolderKanban } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Pencil, Calculator, FileText, Printer, DollarSign, Info, Package, FolderKanban, Upload, FileSpreadsheet, Download, X as XIcon } from 'lucide-react';
 
 const NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'default' | 'outline' }[]> = {
   DRAFT: [{ label: 'Enviar a Revisión', next: 'REVIEW', variant: 'default' }],
@@ -71,6 +73,12 @@ export default function QuotationDetailPage() {
     introductionText: '',
     termsAndConditions: '',
   });
+
+  // Document upload state
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const xlsxInputRef = useRef<HTMLInputElement>(null);
+  const [pdfProgress, setPdfProgress] = useState<number | null>(null);
+  const [xlsxProgress, setXlsxProgress] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!token || !id) return;
@@ -224,6 +232,63 @@ export default function QuotationDetailPage() {
   /* ── PDF ─────────────────────────────────────────────────── */
   const handlePrint = () => window.print();
 
+  /* ── Document upload ─────────────────────────────────────── */
+  const uploadDocument = async (
+    file: File,
+    type: 'pdf' | 'xlsx',
+    setProgress: (n: number | null) => void,
+  ) => {
+    const ext = type === 'pdf' ? 'pdf' : 'xlsx';
+    const storageRef = ref(storage, `quotations/${id}/${type}/${file.name}`);
+    const task = uploadBytesResumable(storageRef, file);
+
+    return new Promise<void>((resolve, reject) => {
+      task.on(
+        'state_changed',
+        snap => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+        err => { setProgress(null); addToast(`Error al subir: ${err.message}`, 'error'); reject(err); },
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const field = type === 'pdf'
+            ? { pdfUrl: url, pdfName: file.name }
+            : { xlsxUrl: url, xlsxName: file.name };
+          await api.patch(`/quotations/${id}`, field, token!);
+          setProgress(null);
+          addToast(`${type.toUpperCase()} guardado correctamente`, 'success');
+          load();
+          resolve();
+        },
+      );
+    });
+  };
+
+  const handleFileChange = (type: 'pdf' | 'xlsx') => async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const setProgress = type === 'pdf' ? setPdfProgress : setXlsxProgress;
+    await uploadDocument(file, type, setProgress);
+  };
+
+  const removeDocument = async (type: 'pdf' | 'xlsx') => {
+    if (!confirm(`¿Eliminar el archivo ${type.toUpperCase()} adjunto?`)) return;
+    try {
+      const url = type === 'pdf' ? quotation.pdfUrl : quotation.xlsxUrl;
+      if (url) {
+        const fileRef = ref(storage, url);
+        await deleteObject(fileRef).catch(() => {/* already deleted */});
+      }
+      const field = type === 'pdf'
+        ? { pdfUrl: null, pdfName: null }
+        : { xlsxUrl: null, xlsxName: null };
+      await api.patch(`/quotations/${id}`, field, token!);
+      addToast(`Archivo ${type.toUpperCase()} eliminado`, 'success');
+      load();
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    }
+  };
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
@@ -284,6 +349,11 @@ export default function QuotationDetailPage() {
 
         {/* Info pills */}
         <div className="flex flex-wrap gap-2">
+          {quotation.tipo && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              {quotation.tipo}
+            </span>
+          )}
           {quotation.validityDays && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
               <Info className="h-3 w-3" />Validez: {quotation.validityDays} días
@@ -320,6 +390,116 @@ export default function QuotationDetailPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Documents */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                Documentos adjuntos
+              </CardTitle>
+              <div className="flex gap-2">
+                <input
+                  ref={pdfInputRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={handleFileChange('pdf')}
+                />
+                <input
+                  ref={xlsxInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleFileChange('xlsx')}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pdfProgress !== null}
+                  onClick={() => pdfInputRef.current?.click()}
+                >
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  {pdfProgress !== null ? `${pdfProgress}%` : quotation.pdfUrl ? 'Reemplazar PDF' : 'Subir PDF'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={xlsxProgress !== null}
+                  onClick={() => xlsxInputRef.current?.click()}
+                >
+                  <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                  {xlsxProgress !== null ? `${xlsxProgress}%` : quotation.xlsxUrl ? 'Reemplazar Excel' : 'Subir Excel'}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!quotation.pdfUrl && !quotation.xlsxUrl ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Sin documentos adjuntos. Sube el PDF o Excel de la cotización.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {quotation.pdfUrl && (
+                  <div className="flex items-center justify-between rounded-lg border px-4 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-5 w-5 text-red-500 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">{quotation.pdfName || 'cotizacion.pdf'}</p>
+                        <p className="text-xs text-muted-foreground">PDF</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <a href={quotation.pdfUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Descargar">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive/70 hover:text-destructive"
+                        title="Eliminar"
+                        onClick={() => removeDocument('pdf')}
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {quotation.xlsxUrl && (
+                  <div className="flex items-center justify-between rounded-lg border px-4 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <FileSpreadsheet className="h-5 w-5 text-green-600 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">{quotation.xlsxName || 'cotizacion.xlsx'}</p>
+                        <p className="text-xs text-muted-foreground">Excel</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <a href={quotation.xlsxUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Descargar">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive/70 hover:text-destructive"
+                        title="Eliminar"
+                        onClick={() => removeDocument('xlsx')}
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Sections */}
         <div className="space-y-4">
