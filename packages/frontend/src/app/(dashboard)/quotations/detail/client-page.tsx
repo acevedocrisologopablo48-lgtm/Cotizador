@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { storage } from '@/lib/firebase';
@@ -44,7 +44,8 @@ interface ItemForm {
 const EMPTY_ITEM: ItemForm = { description: '', unit: 'UND', quantity: '', unitPrice: '' };
 
 export default function QuotationDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
   const { token } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
@@ -80,12 +81,18 @@ export default function QuotationDetailPage() {
   const [pdfProgress, setPdfProgress] = useState<number | null>(null);
   const [xlsxProgress, setXlsxProgress] = useState<number | null>(null);
 
+  const [companySettings, setCompanySettings] = useState<any>(null);
+
   const load = useCallback(async () => {
     if (!token || !id) return;
     try {
       setLoading(true);
-      const data = await api.get<any>(`/quotations/${id}`, token);
-      setQuotation(data);
+      const [quotationData, settingsData] = await Promise.all([
+        api.get<any>(`/quotations/${id}`, token),
+        api.get<any>('/config/company', token).catch(() => null)
+      ]);
+      setQuotation(quotationData);
+      if (settingsData) setCompanySettings(settingsData);
     } catch (e: any) {
       addToast(e.message, 'error');
     } finally {
@@ -221,7 +228,7 @@ export default function QuotationDetailPage() {
       setConverting(true);
       const project = await api.post<any>(`/projects/from-quotation/${id}`, {}, token!);
       addToast('Proyecto creado correctamente', 'success');
-      router.push(`/projects/${project.id}`);
+      router.push(`/projects/detail?id=${project.id}`);
     } catch (e: any) {
       addToast(e.message, 'error');
     } finally {
@@ -601,9 +608,19 @@ export default function QuotationDetailPage() {
       <div className="hidden print:block text-[10pt] text-gray-900 font-sans">
         {/* Letterhead */}
         <div className="flex items-start justify-between border-b-2 border-gray-700 pb-4 mb-6">
-          <div>
-            <h1 className="text-[16pt] font-bold">FYM Technologies</h1>
-            <p className="text-[9pt] text-gray-500">Sistema Modular de Cotizaciones y Costos</p>
+          <div className="flex items-center gap-4">
+            {companySettings?.logoUrl && (
+              <img src={companySettings.logoUrl} alt="Logo" className="h-16 w-auto object-contain" />
+            )}
+            <div>
+              <h1 className="text-[16pt] font-bold">{companySettings?.name || 'FYM Technologies'}</h1>
+              <p className="text-[9pt] text-gray-500">
+                {companySettings?.ruc && `RUC: ${companySettings.ruc} | `}
+                {companySettings?.phone && `${companySettings.phone} | `}
+                {companySettings?.email}
+              </p>
+              {companySettings?.address && <p className="text-[9pt] text-gray-500">{companySettings.address}</p>}
+            </div>
           </div>
           <div className="text-right">
             <p className="text-[14pt] font-bold">{quotation.quotationNumber}</p>
@@ -700,17 +717,31 @@ export default function QuotationDetailPage() {
           </div>
         </div>
 
-        {/* Terms */}
-        {quotation.termsAndConditions && (
-          <div className="text-[8pt] text-gray-600 border-t border-gray-200 pt-3 mt-4">
-            <p className="font-semibold text-gray-700 mb-1">Términos y Condiciones</p>
-            <p className="leading-relaxed whitespace-pre-wrap">{quotation.termsAndConditions}</p>
-          </div>
-        )}
+        {/* Terms and Settings */}
+        <div className="text-[8pt] text-gray-600 border-t border-gray-200 pt-3 mt-4 space-y-4">
+          {quotation.termsAndConditions && (
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Condiciones Comerciales</p>
+              <p className="leading-relaxed whitespace-pre-wrap">{quotation.termsAndConditions}</p>
+            </div>
+          )}
+          {companySettings?.notes && (
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Notas Generales</p>
+              <p className="leading-relaxed whitespace-pre-wrap">{companySettings.notes}</p>
+            </div>
+          )}
+          {companySettings?.bankDetails && (
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Cuentas Bancarias</p>
+              <p className="leading-relaxed whitespace-pre-wrap">{companySettings.bankDetails}</p>
+            </div>
+          )}
+        </div>
 
         {/* Footer */}
         <div className="mt-8 pt-3 border-t border-gray-200 flex justify-between text-[8pt] text-gray-400">
-          <span>FYM Technologies — Sistema de Cotizaciones</span>
+          <span>{companySettings?.name || 'FYM Technologies'} — Cotización</span>
           <span>Generado el {new Date().toLocaleDateString('es-PE')}</span>
         </div>
       </div>

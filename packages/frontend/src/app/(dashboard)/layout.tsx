@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -14,6 +14,7 @@ import {
   LogOut,
   Menu,
   X,
+  Settings,
 } from 'lucide-react';
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/quotations', label: 'Cotizaciones', icon: FileText },
   { href: '/projects', label: 'Proyectos', icon: FolderKanban },
   { href: '/petty-cash', label: 'Caja Chica', icon: Wallet },
+  { href: '/settings', label: 'Configuraciones', icon: Settings },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -109,7 +111,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button
             onClick={logout}
             className="p-1.5 rounded-md text-[hsl(var(--sidebar-muted))] hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"
-            title="Cerrar sesiÃ³n"
+            title="Cerrar sesión"
           >
             <LogOut className="h-3.5 w-3.5" />
           </button>

@@ -153,7 +153,7 @@ export default function ClientsPage() {
                 <TableRow key={company.id}>
                   <TableCell>
                     <Link
-                      href={`/clients/${company.id}`}
+                      href={`/clients/detail?id=${company.id}`}
                       className="font-medium text-primary hover:underline"
                     >
                       {company.tradeName || company.businessName}
@@ -178,7 +178,7 @@ export default function ClientsPage() {
                   </TableCell>
                   <TableCell>
                     {canEdit && (
-                      <Link href={`/clients/${company.id}?edit=true`}>
+                      <Link href={`/clients/detail?id=${company.id}&edit=true`}>
                         <Button variant="ghost" size="icon" title="Editar cliente">
                           <Pencil className="h-4 w-4" />
                         </Button>

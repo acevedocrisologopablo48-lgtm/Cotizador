@@ -19,4 +19,16 @@ export class AppConfigController {
   updateQuotationTypes(@Body('types') types: string[]) {
     return this.appConfigService.updateQuotationTypes(types ?? []);
   }
+
+  @Get('company')
+  @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR', 'ACCOUNTANT', 'VIEWER')
+  getCompanySettings() {
+    return this.appConfigService.getCompanySettings();
+  }
+
+  @Put('company')
+  @Roles('ADMIN', 'MANAGER')
+  updateCompanySettings(@Body() body: any) {
+    return this.appConfigService.updateCompanySettings(body);
+  }
 }

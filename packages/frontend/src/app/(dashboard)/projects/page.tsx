@@ -117,7 +117,7 @@ export default function ProjectsPage() {
                       <TableCell><Badge variant={status.variant}>{status.label}</Badge></TableCell>
                       <TableCell className="text-right font-mono">PEN {Number(p.approvedBudget).toFixed(2)}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => router.push(`/projects/${p.id}`)}><Eye className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => router.push(`/projects/detail?id=${p.id}`)}><Eye className="h-4 w-4" /></Button>
                       </TableCell>
                     </TableRow>
                   );

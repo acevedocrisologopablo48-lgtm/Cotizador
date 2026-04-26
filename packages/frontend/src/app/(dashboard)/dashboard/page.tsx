@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,9 +22,9 @@ const STATUS_CHIP: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Borrador', REVIEW: 'RevisiÃ³n', APPROVED: 'Aprobada',
+  DRAFT: 'Borrador', REVIEW: 'Revisión', APPROVED: 'Aprobada',
   SENT: 'Enviada', ACCEPTED: 'Aceptada', REJECTED: 'Rechazada',
-  PLANNING: 'PlanificaciÃ³n', IN_PROGRESS: 'En Progreso',
+  PLANNING: 'Planificación', IN_PROGRESS: 'En Progreso',
   COMPLETED: 'Completado', ON_HOLD: 'En Pausa',
 };
 
@@ -57,7 +57,7 @@ export default function DashboardPage() {
   }, [token]);
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Buenos dÃ­as' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
+  const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
   const firstName = user?.fullName?.split(' ')[0] ?? '';
 
   const statCards = [
@@ -128,8 +128,8 @@ export default function DashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-b border-border/60">
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide pl-5">NÂ° Cot.</TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide">TÃ­tulo</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide pl-5">Nº Cot.</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Título</TableHead>
                   <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Estado</TableHead>
                   <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-right pr-5">Total</TableHead>
                 </TableRow>
@@ -141,11 +141,11 @@ export default function DashboardPage() {
                   <TableRow>
                     <TableCell colSpan={4} className="py-10 text-center">
                       <FileText className="mx-auto h-7 w-7 mb-2 text-muted-foreground/25" />
-                      <p className="text-sm text-muted-foreground">Sin cotizaciones aÃºn</p>
+                      <p className="text-sm text-muted-foreground">Sin cotizaciones aún</p>
                     </TableCell>
                   </TableRow>
                 ) : recentQuotations.map((q) => (
-                  <TableRow key={q.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/quotations/${q.id}`)}>
+                  <TableRow key={q.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/quotations/detail?id=${q.id}`)}>
                     <TableCell className="font-mono text-xs pl-5">{q.quotationNumber}</TableCell>
                     <TableCell className="text-sm max-w-[130px] truncate">{q.title}</TableCell>
                     <TableCell>
@@ -178,7 +178,7 @@ export default function DashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-b border-border/60">
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide pl-5">CÃ³digo</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide pl-5">Código</TableHead>
                   <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Nombre</TableHead>
                   <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Estado</TableHead>
                   <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-right pr-5">Presupuesto</TableHead>
@@ -191,11 +191,11 @@ export default function DashboardPage() {
                   <TableRow>
                     <TableCell colSpan={4} className="py-10 text-center">
                       <FolderKanban className="mx-auto h-7 w-7 mb-2 text-muted-foreground/25" />
-                      <p className="text-sm text-muted-foreground">Sin proyectos aÃºn</p>
+                      <p className="text-sm text-muted-foreground">Sin proyectos aún</p>
                     </TableCell>
                   </TableRow>
                 ) : recentProjects.map((p) => (
-                  <TableRow key={p.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/projects/${p.id}`)}>
+                  <TableRow key={p.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/projects/detail?id=${p.id}`)}>
                     <TableCell className="font-mono text-xs pl-5">{p.projectCode}</TableCell>
                     <TableCell className="text-sm max-w-[130px] truncate">{p.name}</TableCell>
                     <TableCell>

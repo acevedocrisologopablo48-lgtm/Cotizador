@@ -83,7 +83,7 @@ export default function NewClientPage() {
       }
 
       addToast(`${form.businessName} registrado exitosamente`, 'success');
-      router.push(`/clients/${companyId}`);
+      router.push(`/clients/detail?id=${companyId}`);
     } catch (err: any) {
       addToast(err.message || 'Error al crear cliente', 'error');
     } finally {

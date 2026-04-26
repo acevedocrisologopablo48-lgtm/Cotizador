@@ -236,7 +236,7 @@ export default function QuotationsPage() {
                       <TableCell className="text-right font-mono">{q.currency || 'PEN'} {Number(q.total || 0).toFixed(2)}</TableCell>
                       <TableCell>{new Date(q.createdAt).toLocaleDateString('es-PE')}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => router.push(`/quotations/${q.id}`)}>
+                        <Button variant="outline" size="sm" onClick={() => router.push(`/quotations/detail?id=${q.id}`)}>
                           <ExternalLink className="mr-1.5 h-3.5 w-3.5" />Ver detalle
                         </Button>
                       </TableCell>

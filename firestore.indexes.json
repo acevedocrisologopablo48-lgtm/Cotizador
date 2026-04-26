@@ -135,7 +135,7 @@
         { "fieldPath": "isActive", "order": "ASCENDING" },
         { "fieldPath": "name", "order": "ASCENDING" }
       ]
-    }
+    },
     {
       "collectionGroup": "contacts",
       "queryScope": "COLLECTION",

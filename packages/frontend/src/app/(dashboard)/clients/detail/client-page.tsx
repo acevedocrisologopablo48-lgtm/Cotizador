@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -56,8 +56,8 @@ export interface Agreement {
 }
 
 export default function ClientDetailPage() {
-  const { id } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const id = searchParams.get('id');
   const router = useRouter();
   const { token, user } = useAuth();
   const { addToast } = useToast();

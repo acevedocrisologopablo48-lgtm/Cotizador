@@ -84,7 +84,7 @@ export default function NewQuotationPage() {
 
       const created = await api.post<any>('/quotations', body, token!);
       addToast('Cotización creada', 'success');
-      router.push(`/quotations/${created.id}`);
+      router.push(`/quotations/detail?id=${created.id}`);
     } catch (e: any) {
       addToast(e.message, 'error');
     } finally {

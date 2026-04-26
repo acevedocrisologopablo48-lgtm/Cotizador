@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,8 @@ const WORKER_ROLES = [
 ];
 
 export default function ProjectDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
   const { token } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();

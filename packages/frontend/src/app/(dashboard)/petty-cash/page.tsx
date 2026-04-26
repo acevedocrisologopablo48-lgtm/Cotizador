@@ -214,7 +214,7 @@ export default function PettyCashPage() {
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Nueva Caja Chica</DialogTitle>
           </DialogHeader>
@@ -249,7 +249,7 @@ export default function PettyCashPage() {
 
       {/* Detail Dialog */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent aria-describedby={undefined} className="max-w-2xl max-h-[80vh] overflow-y-auto">
           {selectedFund && (
             <>
               <DialogHeader>
@@ -338,7 +338,7 @@ export default function PettyCashPage() {
 
       {/* Transaction Dialog */}
       <Dialog open={txnOpen} onOpenChange={setTxnOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Registrar Movimiento</DialogTitle>
           </DialogHeader>
