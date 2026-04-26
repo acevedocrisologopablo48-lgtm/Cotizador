@@ -13,7 +13,9 @@ async function bootstrap() {
     origin: [
       process.env.FRONTEND_URL || 'http://localhost:3000',
       'https://cotiza-luis.web.app',
-      'https://cotiza-luis.firebaseapp.com'
+      'https://cotiza-luis.firebaseapp.com',
+      'https://fym-cotizaciones.vercel.app',
+      /^https:\/\/fym-cotizaciones-.*\.vercel\.app$/,
     ],
     credentials: true,
   });
