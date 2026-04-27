@@ -161,3 +161,27 @@ export enum CategoryModuleType {
   LABOR = 'LABOR',
   SERVICE = 'SERVICE',
 }
+
+// ─── RRHH ────────────────────────────────────────────────────────────────────
+
+export enum EmployeeStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+}
+
+export enum DocumentType {
+  DNI = 'DNI',
+  CE = 'CE',
+  PASAPORTE = 'PASAPORTE',
+}
+
+export enum AttendanceType {
+  CHECK_IN = 'CHECK_IN',
+  CHECK_OUT = 'CHECK_OUT',
+}
+
+export enum TimesheetStatus {
+  PRESENT = 'PRESENT',
+  INCOMPLETE = 'INCOMPLETE',
+  ABSENT = 'ABSENT',
+}

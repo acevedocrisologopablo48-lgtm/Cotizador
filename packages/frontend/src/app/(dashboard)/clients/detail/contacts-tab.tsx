@@ -16,7 +16,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -26,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Mail, Phone, Star } from 'lucide-react';
+import { Plus, Pencil, Trash2, Mail, Phone, ShieldCheck, UserPlus, MoreVertical, Contact2 } from 'lucide-react';
 import type { Contact } from './client-page';
 
 interface ContactsTabProps {
@@ -112,124 +111,95 @@ export function ContactsTab({ companyId, contacts, canEdit, onRefresh }: Contact
     }
   };
 
-  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const setField = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">Contactos</CardTitle>
+    <Card className="border-white/10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-3xl rounded-[2.5rem] overflow-hidden shadow-2xl">
+      <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 bg-white/10 dark:bg-slate-950/20 px-10 py-8">
+        <div>
+          <CardTitle className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Directorio Focal de Contactos</CardTitle>
+          <p className="text-xs font-medium text-slate-400 mt-1">Interlocutores registrados para gestiones operativas</p>
+        </div>
         {canEdit && (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" onClick={openNew}>
-                <Plus className="mr-2 h-4 w-4" />
-                Agregar
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{editingId ? 'Editar contacto' : 'Nuevo contacto'}</DialogTitle>
-                <DialogDescription>
-                  {editingId ? 'Modifica los datos del contacto' : 'Agrega un nuevo contacto para esta empresa'}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Nombre completo *</Label>
-                  <Input value={form.fullName} onChange={set('fullName')} placeholder="Juan Pérez" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cargo</Label>
-                  <Input value={form.position} onChange={set('position')} placeholder="Gerente de operaciones" />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Correo</Label>
-                    <Input type="email" value={form.email} onChange={set('email')} placeholder="correo@empresa.com" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Teléfono</Label>
-                    <Input value={form.phone} onChange={set('phone')} placeholder="+51 999 888 777" />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="isPrimary"
-                    checked={form.isPrimary}
-                    onChange={(e) => setForm((prev) => ({ ...prev, isPrimary: e.target.checked }))}
-                    className="rounded border-input"
-                  />
-                  <Label htmlFor="isPrimary">Contacto principal</Label>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? 'Guardando...' : 'Guardar'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={openNew} className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-blue-500/20 transition-all">
+            <UserPlus className="mr-2 h-4 w-4" />
+            Vincular Nodo
+          </Button>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0">
         {contacts.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">
-            No hay contactos registrados
-          </p>
+          <div className="py-32 text-center">
+            <div className="flex flex-col items-center gap-6">
+              <div className="h-20 w-20 rounded-3xl bg-slate-900/5 flex items-center justify-center border border-slate-200 dark:border-white/5">
+                <Contact2 className="h-10 w-10 text-slate-300" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">No se han registrado nodos de contacto para este socio.</p>
+            </div>
+          </div>
         ) : (
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Cargo</TableHead>
-                <TableHead>Correo</TableHead>
-                <TableHead>Teléfono</TableHead>
-                {canEdit && <TableHead className="w-[100px]" />}
+            <TableHeader className="bg-slate-900">
+              <TableRow className="border-none hover:bg-transparent">
+                <TableHead className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400 py-5 pl-10">Colaborador / Rango</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400 py-5">Identidad Digital</TableHead>
+                <TableHead className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400 py-5">Canal Telefónico</TableHead>
+                {canEdit && <TableHead className="w-[120px] pr-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {contacts.map((contact) => (
-                <TableRow key={contact.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {contact.fullName}
-                      {contact.isPrimary && (
-                        <Badge variant="secondary" className="text-xs">
-                          <Star className="mr-1 h-3 w-3" />
-                          Principal
-                        </Badge>
-                      )}
+                <TableRow key={contact.id} className="group border-white/5 hover:bg-white/60 dark:hover:bg-white/5 transition-all">
+                  <TableCell className="pl-10 py-6">
+                    <div className="flex items-center gap-5">
+                      <div className="h-12 w-12 rounded-2xl bg-slate-950 border border-white/10 flex items-center justify-center text-white font-black text-lg shadow-lg group-hover:rotate-3 transition-transform">
+                        {contact.fullName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-slate-900 dark:text-white uppercase tracking-tight">{contact.fullName}</span>
+                          {contact.isPrimary && (
+                            <Badge className="text-[8px] font-black uppercase tracking-widest bg-blue-500 text-white border-none px-2 py-0.5 rounded-md">Master</Badge>
+                          )}
+                        </div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-500/70">{contact.position || 'Standard Account'}</p>
+                      </div>
                     </div>
                   </TableCell>
-                  <TableCell>{contact.position || '—'}</TableCell>
-                  <TableCell>
+                  <TableCell className="py-6">
                     {contact.email ? (
-                      <a href={`mailto:${contact.email}`} className="flex items-center gap-1 text-primary hover:underline">
-                        <Mail className="h-3 w-3" />
+                      <a href={`mailto:${contact.email}`} className="flex items-center gap-2.5 text-xs font-mono font-medium text-slate-500 hover:text-blue-600 transition-colors">
+                        <div className="p-1.5 bg-blue-500/5 rounded-lg border border-blue-500/10">
+                          <Mail className="h-3 w-3" />
+                        </div>
                         {contact.email}
                       </a>
-                    ) : '—'}
+                    ) : (
+                      <span className="text-xs text-slate-300 italic">No registrado</span>
+                    )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-6">
                     {contact.phone ? (
-                      <span className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
+                      <span className="flex items-center gap-2.5 text-xs font-mono font-black text-slate-700 dark:text-slate-300">
+                        <div className="p-1.5 bg-emerald-500/5 rounded-lg border border-emerald-500/10">
+                          <Phone className="h-3 w-3 text-emerald-500" />
+                        </div>
                         {contact.phone}
                       </span>
-                    ) : '—'}
+                    ) : (
+                      <span className="text-xs text-slate-300 italic">No registrado</span>
+                    )}
                   </TableCell>
                   {canEdit && (
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(contact)}>
-                          <Pencil className="h-4 w-4" />
+                    <TableCell className="pr-10 py-6 text-right">
+                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(contact)} className="h-10 w-10 rounded-xl hover:bg-white dark:hover:bg-white/10 hover:shadow-sm">
+                          <Pencil className="h-4 w-4 text-slate-500" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(contact.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(contact.id)} className="h-10 w-10 rounded-xl hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 transition-all">
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -240,6 +210,106 @@ export function ContactsTab({ companyId, contacts, canEdit, onRefresh }: Contact
           </Table>
         )}
       </CardContent>
+
+      {/* ── Contact Management Dialog ── */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-xl rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl font-jakarta">
+          <div className="bg-slate-950 px-8 py-10 text-white relative">
+            <div className="absolute top-0 right-0 w-32 h-full bg-blue-500/10 -skew-x-12" />
+            <DialogHeader className="relative">
+              <DialogTitle className="text-2xl font-black flex items-center gap-3 uppercase tracking-tighter">
+                <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 shadow-inner">
+                  {editingId ? <Pencil className="h-6 w-6 text-orange-400" /> : <UserPlus className="h-6 w-6 text-blue-400" />}
+                </div>
+                {editingId ? 'Editar Nodo de Contacto' : 'Vinculación de Nuevo Nodo'}
+              </DialogTitle>
+              <p className="text-slate-400 font-medium text-sm mt-3 leading-relaxed max-w-sm">
+                Gestione la identidad y canales de comunicación del interlocutor corporativo.
+              </p>
+            </DialogHeader>
+          </div>
+
+          <div className="p-8 space-y-8 bg-white dark:bg-slate-950">
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Identidad Completa *</Label>
+              <Input 
+                value={form.fullName} 
+                onChange={setField('fullName')} 
+                placeholder="Nombre y Apellidos del colaborador" 
+                className="h-14 rounded-2xl bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 font-bold text-base focus:ring-blue-500/20" 
+              />
+            </div>
+            
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Rango / Cargo Corporativo</Label>
+              <Input 
+                value={form.position} 
+                onChange={setField('position')} 
+                placeholder="Ej: Gerente de Proyectos, Jefe de Compras..." 
+                className="h-14 rounded-2xl bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 font-medium text-sm focus:ring-blue-500/20" 
+              />
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2 p-6 rounded-3xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5">
+              <div className="space-y-3">
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Correo Electrónico</Label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input 
+                    type="email" 
+                    value={form.email} 
+                    onChange={setField('email')} 
+                    placeholder="mail@empresa.com" 
+                    className="h-12 pl-12 rounded-xl bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 font-mono text-xs font-bold" 
+                  />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Canal de Voz / Teléfono</Label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input 
+                    value={form.phone} 
+                    onChange={setField('phone')} 
+                    placeholder="+51 000 000 000" 
+                    className="h-12 pl-12 rounded-xl bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 font-mono text-xs font-bold" 
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div 
+              className={`flex items-center gap-4 p-5 rounded-2xl border transition-all cursor-pointer select-none ${
+                form.isPrimary 
+                  ? 'bg-blue-500/10 border-blue-500/30 ring-2 ring-blue-500/10' 
+                  : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 hover:border-blue-500/20'
+              }`}
+              onClick={() => setForm(f => ({ ...f, isPrimary: !f.isPrimary }))}
+            >
+              <div className={`h-6 w-6 rounded-lg flex items-center justify-center transition-all ${
+                form.isPrimary ? 'bg-blue-500 shadow-lg' : 'bg-slate-100 dark:bg-white/10'
+              }`}>
+                {form.isPrimary && <ShieldCheck className="h-4 w-4 text-white" />}
+              </div>
+              <div className="space-y-0.5">
+                <Label className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight cursor-pointer">Definir como Interlocutor Maestro</Label>
+                <p className="text-[10px] font-medium text-slate-500">Este contacto aparecerá por defecto en propuestas y comunicaciones.</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="p-8 bg-slate-50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 gap-3">
+            <Button variant="ghost" className="h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-[10px] text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10 transition-all" onClick={() => setDialogOpen(false)}>CANCELAR</Button>
+            <Button 
+              onClick={handleSave} 
+              disabled={isSaving} 
+              className="h-14 px-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-slate-200 dark:shadow-none transition-all active:scale-95"
+            >
+              {isSaving ? 'GUARDANDO...' : editingId ? 'CONFIRMAR CAMBIOS' : 'ESTABLECER VÍNCULO'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

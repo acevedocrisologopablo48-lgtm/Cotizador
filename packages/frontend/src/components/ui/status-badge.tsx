@@ -29,17 +29,29 @@ const STATUS_MAP: Record<string, StatusConfig> = {
   CLOSED: { label: 'Cerrada', variant: 'secondary' },
   ACTIVE: { label: 'Activo', variant: 'success' },
   INACTIVE: { label: 'Inactivo', variant: 'secondary' },
+
+  // HR statuses
+  PRESENT: { label: 'Presente', variant: 'success' },
+  INCOMPLETE: { label: 'Incompleto', variant: 'warning' },
+  ABSENT: { label: 'Ausente', variant: 'destructive' },
 };
 
 interface StatusBadgeProps {
   status: string;
   className?: string;
+  size?: 'sm' | 'md' | 'lg';
 }
 
-export function StatusBadge({ status, className }: StatusBadgeProps) {
+const SIZE_CLASS: Record<NonNullable<StatusBadgeProps['size']>, string> = {
+  sm: 'text-[10px] px-2 py-0.5',
+  md: 'text-[11px] px-2.5 py-0.5',
+  lg: 'text-xs px-3 py-1',
+};
+
+export function StatusBadge({ status, className, size = 'md' }: StatusBadgeProps) {
   const config = STATUS_MAP[status] ?? { label: status, variant: 'outline' as BadgeVariant };
   return (
-    <Badge variant={config.variant} className={className}>
+    <Badge variant={config.variant} className={`${SIZE_CLASS[size]} ${className ?? ''}`.trim()}>
       {config.label}
     </Badge>
   );

@@ -9,6 +9,7 @@ import { QuotationsModule } from './quotations/quotations.module';
 import { ProjectsModule } from './projects/projects.module';
 import { PettyCashModule } from './petty-cash/petty-cash.module';
 import { AppConfigModule } from './app-config/app-config.module';
+import { HrModule } from './hr/hr.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { AppConfigModule } from './app-config/app-config.module';
     ProjectsModule,
     PettyCashModule,
     AppConfigModule,
+    HrModule,
   ],
   providers: [],
 })

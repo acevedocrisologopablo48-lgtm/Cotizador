@@ -8,6 +8,8 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 RUN pnpm install --frozen-lockfile
+# Ensure exceljs is linked (pnpm CAS hard-link can fail silently on some hosts)
+RUN test -d packages/backend/node_modules/exceljs || (cd packages/backend && npm install exceljs@4.4.0 --no-save --legacy-peer-deps --quiet)
 
 # ── build stage ─────────────────────────────────────────────
 FROM base AS builder
@@ -29,6 +31,8 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 RUN pnpm install --frozen-lockfile --prod
+# Ensure exceljs is linked (pnpm CAS hard-link can fail silently on some hosts)
+RUN test -d packages/backend/node_modules/exceljs || (cd packages/backend && npm install exceljs@4.4.0 --no-save --legacy-peer-deps --quiet)
 
 COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist

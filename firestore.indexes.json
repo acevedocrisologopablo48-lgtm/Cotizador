@@ -193,6 +193,68 @@
         { "fieldPath": "isActive", "order": "ASCENDING" },
         { "fieldPath": "fullName", "order": "ASCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "employees",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",   "order": "ASCENDING" },
+        { "fieldPath": "fullName", "order": "ASCENDING" }
+      ]
+    },
+
+
+    {
+      "collectionGroup": "attendances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "date",       "order": "ASCENDING" },
+        { "fieldPath": "type",       "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "attendances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "date",       "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "timesheets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "date",       "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timesheets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "month",      "order": "ASCENDING" },
+        { "fieldPath": "date",       "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timesheets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "date",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timesheets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "week", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

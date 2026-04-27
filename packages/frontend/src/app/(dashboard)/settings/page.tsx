@@ -1,11 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/components/ui/toast';
-import { Save, Upload, Image as ImageIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import {
+  Save, Upload, Image as ImageIcon, Building2, FileText,
+  CreditCard, Loader2, CheckCircle2, ChevronRight,
+} from 'lucide-react';
 
 interface CompanySettings {
   name: string;
@@ -27,6 +34,7 @@ interface CompanySettings {
 }
 
 export default function SettingsPage() {
+  const { token } = useAuth();
   const { addToast } = useToast();
   const [settings, setSettings] = useState<CompanySettings>({
     name: '',
@@ -48,16 +56,17 @@ export default function SettingsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
 
   useEffect(() => {
     loadSettings();
-  }, []);
+  }, [token]);
 
   const loadSettings = async () => {
     try {
-      const data = await api.get<CompanySettings>('/config/company');
+      const data = await api.get<CompanySettings>('/config/company', token ?? undefined);
       setSettings(data);
     } catch (err: any) {
       addToast(err.message || 'Error al cargar configuraciones', 'error');
@@ -69,6 +78,7 @@ export default function SettingsPage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setSettings(prev => ({ ...prev, [name]: value }));
+    setSaved(false);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -77,9 +87,11 @@ export default function SettingsPage() {
 
     setSaving(true);
     try {
-      const saved = await api.put<CompanySettings>('/config/company', settings);
+      const saved = await api.put<CompanySettings>('/config/company', settings, token ?? undefined);
       setSettings(saved);
+      setSaved(true);
       addToast('Configuraciones guardadas correctamente', 'success');
+      setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
       addToast(err.message || 'Error al guardar configuraciones', 'error');
     } finally {
@@ -87,74 +99,40 @@ export default function SettingsPage() {
     }
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (
+    field: 'logoUrl' | 'signatureUrl',
+    setUploading: (v: boolean) => void,
+    label: string,
+  ) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate type
     if (!file.type.startsWith('image/')) {
       addToast('Selecciona una imagen válida', 'error');
       return;
     }
 
-    setUploadingLogo(true);
-    const storageRef = ref(storage, `company/logo_${Date.now()}_${file.name}`);
+    setUploading(true);
+    const storageRef = ref(storage, `company/${field}_${Date.now()}_${file.name}`);
     const task = uploadBytesResumable(storageRef, file);
-
-    addToast('Subiendo logo...', 'success'); // using success for lack of loading toast in this simple hook
 
     task.on(
       'state_changed',
       () => {},
-      (error) => {
-        setUploadingLogo(false);
-        addToast('Error al subir el logo', 'error');
+      () => {
+        setUploading(false);
+        addToast(`Error al subir ${label}`, 'error');
       },
       async () => {
         try {
           const url = await getDownloadURL(task.snapshot.ref);
-          setSettings(prev => ({ ...prev, logoUrl: url }));
-          setUploadingLogo(false);
-          addToast('Logo subido correctamente (recuerda guardar los cambios)', 'success');
-        } catch (err) {
-          setUploadingLogo(false);
-          addToast('Error al subir el logo', 'error');
-        }
-      }
-    );
-  };
-
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      addToast('Selecciona una imagen válida para la firma', 'error');
-      return;
-    }
-
-    setUploadingSignature(true);
-    const storageRef = ref(storage, `company/signature_${Date.now()}_${file.name}`);
-    const task = uploadBytesResumable(storageRef, file);
-
-    addToast('Subiendo firma...', 'success');
-
-    task.on(
-      'state_changed',
-      () => {},
-      (error) => {
-        setUploadingSignature(false);
-        addToast('Error al subir la firma', 'error');
-      },
-      async () => {
-        try {
-          const url = await getDownloadURL(task.snapshot.ref);
-          setSettings(prev => ({ ...prev, signatureUrl: url }));
-          setUploadingSignature(false);
-          addToast('Firma subida correctamente (recuerda guardar los cambios)', 'success');
-        } catch (err) {
-          setUploadingSignature(false);
-          addToast('Error al subir la firma', 'error');
+          setSettings(prev => ({ ...prev, [field]: url }));
+          setUploading(false);
+          setSaved(false);
+          addToast(`${label} subido correctamente (recuerda guardar)`, 'success');
+        } catch {
+          setUploading(false);
+          addToast(`Error al obtener URL de ${label}`, 'error');
         }
       }
     );
@@ -162,369 +140,391 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+          <p className="text-sm font-black uppercase tracking-widest text-slate-400">Sincronizando Configuración</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Configuración de la Empresa</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Estos datos se utilizarán para generar los documentos PDF de las cotizaciones.
-        </p>
+    <div className="mx-auto max-w-[1400px] space-y-8 font-jakarta animate-in fade-in slide-in-from-bottom-3 duration-500">
+      {/* Premium Header Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-slate-900 px-8 py-10 md:px-10 md:py-12 shadow-xl border border-white/[0.05]">
+        {/* Background Accents */}
+        <div className="absolute -top-24 -right-24 h-96 w-96 rounded-full bg-primary/20 blur-[100px]" />
+        <div className="absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-indigo-500/10 blur-[100px]" />
+        
+        <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 text-primary border border-primary/20 shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div className="h-[1px] w-8 bg-white/10" />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">System Architecture</span>
+            </div>
+            
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white leading-tight">
+              Configuración <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-indigo-400 to-emerald-400">
+                Corporativa
+              </span>
+            </h1>
+            <p className="text-slate-400 font-medium max-w-xl text-sm leading-relaxed tracking-wide">
+              Parametrización global de la plataforma, identidad de marca y directrices fiscales para la estandarización de procesos comerciales de alto impacto.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-center md:items-end gap-4">
+            <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md p-2 rounded-2xl border border-white/10">
+              {saved && (
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-xl animate-in zoom-in duration-500">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Sincronizado
+                </div>
+              )}
+              <Button
+                onClick={(e) => handleSave(e as any)}
+                disabled={saving || uploadingLogo || uploadingSignature}
+                className="group relative bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-[0.2em] text-[10px] h-14 px-10 rounded-xl transition-all shadow-2xl shadow-primary/20 overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                {saving ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Actualizando Núcleo...
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Save className="h-4 w-4" />
+                    Ejecutar Cambios
+                  </div>
+                )}
+              </Button>
+            </div>
+            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Última modificación: {new Date().toLocaleDateString()}</p>
+          </div>
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5">
-        <form onSubmit={handleSave} className="p-6 sm:p-8">
-          <div className="grid grid-cols-1 gap-x-8 gap-y-8 md:grid-cols-3">
-            <div className="md:col-span-1">
-              <h2 className="text-base font-semibold leading-7 text-gray-900">Logotipo</h2>
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                Aparecerá en el encabezado de las cotizaciones.
-              </p>
-
-              <div className="mt-6 flex flex-col items-center gap-4">
+      <form onSubmit={handleSave} className="grid gap-10">
+        {/* Visual Identity Section */}
+        <div className="grid gap-10 lg:grid-cols-2">
+          {/* Logo Card */}
+          <Card className="group relative overflow-hidden border-white/[0.05] bg-slate-900/40 backdrop-blur-2xl rounded-[2rem]">
+            <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            <CardHeader className="p-8 pb-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="text-sm font-black uppercase tracking-[0.15em] flex items-center gap-2 text-white">
+                    <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <ImageIcon className="h-3.5 w-3.5 text-primary" />
+                    </div>
+                    Identidad Visual
+                  </CardTitle>
+                  <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-slate-500 ml-8">Logo Corporativo Principal</CardDescription>
+                </div>
+                <div className="px-3 py-1 rounded-full bg-slate-800/50 border border-white/5 text-[9px] font-mono text-slate-400 tracking-tighter">BRAND_ID: 001</div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-8 pt-0 space-y-6">
+              <div className="relative aspect-video w-full overflow-hidden rounded-3xl border-2 border-dashed border-white/5 bg-slate-950/40 flex items-center justify-center group/img hover:border-primary/30 transition-colors duration-500">
                 {settings.logoUrl ? (
-                  <div className="relative h-32 w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                    <img src={settings.logoUrl} alt="Logo" className="h-full w-full object-contain p-2" />
-                  </div>
+                  <img src={settings.logoUrl} alt="Logo" className="h-full w-full object-contain p-10 transition-transform duration-700 group-hover/img:scale-105" />
                 ) : (
-                  <div className="flex h-32 w-full items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50">
-                    <ImageIcon className="h-8 w-8 text-gray-400" />
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-slate-900 flex items-center justify-center border border-white/5">
+                      <ImageIcon className="h-8 w-8 text-slate-700" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Pending Upload</span>
                   </div>
                 )}
-                
-                <label className="relative cursor-pointer rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
-                  <span>{settings.logoUrl ? 'Cambiar logo' : 'Subir logo'}</span>
-                  <input
-                    type="file"
-                    className="sr-only"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    disabled={uploadingLogo}
-                  />
-                </label>
+                {uploadingLogo && (
+                  <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-10">
+                    <div className="flex flex-col items-center gap-4">
+                      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-white">UPLOADING...</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+              <label className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 px-6 py-4 transition-all duration-300 group/btn">
+                <Upload className="h-4 w-4 text-primary group-hover/btn:scale-110 transition-transform" />
+                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Subir Nuevo Logo</span>
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept="image/*"
+                  onChange={handleImageUpload('logoUrl', setUploadingLogo, 'Logo')}
+                  disabled={uploadingLogo}
+                />
+              </label>
+            </CardContent>
+          </Card>
 
-            <div className="md:col-span-1 border-t border-gray-900/5 pt-8 mt-8 md:border-t-0 md:pt-0 md:mt-0">
-              <h2 className="text-base font-semibold leading-7 text-gray-900">Firma Digital</h2>
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                Se usará al final de la cotización.
-              </p>
-
-              <div className="mt-6 flex flex-col items-center gap-4">
+          {/* Signature Card */}
+          <Card className="group relative overflow-hidden border-white/[0.05] bg-slate-900/40 backdrop-blur-2xl rounded-[2rem]">
+            <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            <CardHeader className="p-8 pb-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="text-sm font-black uppercase tracking-[0.15em] flex items-center gap-2 text-white">
+                    <div className="h-6 w-6 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                      <FileText className="h-3.5 w-3.5 text-indigo-400" />
+                    </div>
+                    Firma Legal
+                  </CardTitle>
+                  <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-slate-500 ml-8">Sello de Autorización Comercial</CardDescription>
+                </div>
+                <div className="px-3 py-1 rounded-full bg-slate-800/50 border border-white/5 text-[9px] font-mono text-slate-400 tracking-tighter">SIG_ID: 001</div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-8 pt-0 space-y-6">
+              <div className="relative aspect-video w-full overflow-hidden rounded-3xl border-2 border-dashed border-white/5 bg-slate-950/40 flex items-center justify-center group/img hover:border-indigo-500/30 transition-colors duration-500">
                 {settings.signatureUrl ? (
-                  <div className="relative h-32 w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                    <img src={settings.signatureUrl} alt="Firma" className="h-full w-full object-contain p-2" />
-                  </div>
+                  <img src={settings.signatureUrl} alt="Firma" className="h-full w-full object-contain p-10 transition-transform duration-700 group-hover/img:scale-105" />
                 ) : (
-                  <div className="flex h-32 w-full items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50">
-                    <ImageIcon className="h-8 w-8 text-gray-400" />
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-slate-900 flex items-center justify-center border border-white/5">
+                      <FileText className="h-8 w-8 text-slate-700" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Pending Upload</span>
                   </div>
                 )}
-                
-                <label className="relative cursor-pointer rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
-                  <span>{settings.signatureUrl ? 'Cambiar firma' : 'Subir firma'}</span>
-                  <input
-                    type="file"
-                    className="sr-only"
-                    accept="image/*"
-                    onChange={handleSignatureUpload}
-                    disabled={uploadingSignature}
-                  />
-                </label>
+                {uploadingSignature && (
+                  <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-10">
+                    <div className="flex flex-col items-center gap-4">
+                      <Loader2 className="h-10 w-10 animate-spin text-indigo-400" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-white">UPLOADING...</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+              <label className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 px-6 py-4 transition-all duration-300 group/btn">
+                <Upload className="h-4 w-4 text-indigo-400 group-hover/btn:scale-110 transition-transform" />
+                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Subir Firma Digital</span>
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept="image/*"
+                  onChange={handleImageUpload('signatureUrl', setUploadingSignature, 'Firma')}
+                  disabled={uploadingSignature}
+                />
+              </label>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Corporate Data Section */}
+        <Card className="border-white/[0.05] bg-slate-900/40 backdrop-blur-xl rounded-[2.5rem] overflow-hidden">
+          <div className="bg-gradient-to-r from-slate-900 to-slate-950 px-10 py-8 border-b border-white/[0.04]">
+            <h3 className="text-sm font-black uppercase tracking-[0.3em] text-white flex items-center gap-3">
+              <Building2 className="h-5 w-5 text-primary" />
+              Núcleo de Datos Corporativos
+            </h3>
           </div>
-
-          <div className="grid grid-cols-1 gap-x-8 gap-y-8 md:grid-cols-3 mt-8 pt-8 border-t border-gray-900/10">
-            <div className="md:col-span-1">
-              <h2 className="text-base font-semibold leading-7 text-gray-900">Datos Generales</h2>
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                Información básica de la empresa para los documentos.
-              </p>
-            </div>
-
-            <div className="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-6 md:col-span-2">
-              <div className="sm:col-span-4">
-                <label htmlFor="name" className="block text-sm font-medium leading-6 text-gray-900">
-                  Razón Social / Nombre de la Empresa
-                </label>
-                <div className="mt-2">
+          <CardContent className="p-10 space-y-10">
+            <div className="grid gap-10 md:grid-cols-12">
+              <div className="md:col-span-8 space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Razón Social Completa</label>
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-primary/5 rounded-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
                   <input
-                    type="text"
                     name="name"
-                    id="name"
+                    type="text"
                     value={settings.name}
                     onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
+                    className="relative w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-bold text-white focus:ring-2 focus:ring-primary/20 focus:border-primary/40 outline-none transition-all placeholder:text-slate-700"
+                    placeholder="Nombre legal de la compañía..."
                   />
                 </div>
               </div>
-
-              <div className="sm:col-span-2">
-                <label htmlFor="ruc" className="block text-sm font-medium leading-6 text-gray-900">
-                  RUC
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="ruc"
-                    id="ruc"
-                    value={settings.ruc}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-full">
-                <label htmlFor="slogan" className="block text-sm font-medium leading-6 text-gray-900">
-                  Eslogan Comercial (Opcional)
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="slogan"
-                    id="slogan"
-                    value={settings.slogan}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label htmlFor="ruc" className="block text-sm font-medium leading-6 text-gray-900">
-                  RUC
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="ruc"
-                    id="ruc"
-                    value={settings.ruc}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-full">
-                <label htmlFor="address" className="block text-sm font-medium leading-6 text-gray-900">
-                  Dirección
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="address"
-                    id="address"
-                    value={settings.address}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-3">
-                <label htmlFor="legalRepresentative" className="block text-sm font-medium leading-6 text-gray-900">
-                  Representante Legal
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="legalRepresentative"
-                    id="legalRepresentative"
-                    value={settings.legalRepresentative}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-3">
-                <label htmlFor="legalRepresentativeRole" className="block text-sm font-medium leading-6 text-gray-900">
-                  Cargo del Representante (Ej. Gerente General)
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="legalRepresentativeRole"
-                    id="legalRepresentativeRole"
-                    value={settings.legalRepresentativeRole}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-3">
-                <label htmlFor="phone" className="block text-sm font-medium leading-6 text-gray-900">
-                  Teléfono principal
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="phone"
-                    id="phone"
-                    value={settings.phone}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-3">
-                <label htmlFor="email" className="block text-sm font-medium leading-6 text-gray-900">
-                  Correo electrónico
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="email"
-                    name="email"
-                    id="email"
-                    value={settings.email}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-full">
-                <label htmlFor="website" className="block text-sm font-medium leading-6 text-gray-900">
-                  Sitio Web (Opcional)
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="website"
-                    id="website"
-                    value={settings.website}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
+              <div className="md:col-span-4 space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">RUC (Registro Único)</label>
+                <input
+                  name="ruc"
+                  type="text"
+                  value={settings.ruc}
+                  onChange={handleChange}
+                  maxLength={11}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black font-mono text-emerald-400 tracking-[0.1em] focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 outline-none transition-all"
+                />
               </div>
             </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Eslogan Estratégico</label>
+              <input
+                name="slogan"
+                type="text"
+                value={settings.slogan}
+                onChange={handleChange}
+                placeholder="Escribe el mensaje institucional..."
+                className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-medium text-slate-300 focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Domicilio Fiscal</label>
+              <input
+                name="address"
+                type="text"
+                value={settings.address}
+                onChange={handleChange}
+                className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-medium text-slate-300 focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              />
+            </div>
+
+            <div className="grid gap-10 md:grid-cols-2">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Representante Autorizado</label>
+                <input
+                  name="legalRepresentative"
+                  type="text"
+                  value={settings.legalRepresentative}
+                  onChange={handleChange}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-bold text-white focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Cargo Ejecutivo</label>
+                <input
+                  name="legalRepresentativeRole"
+                  type="text"
+                  value={settings.legalRepresentativeRole}
+                  onChange={handleChange}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black text-primary tracking-tight focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-10 md:grid-cols-3">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Contacto Telefónico</label>
+                <input
+                  name="phone"
+                  type="text"
+                  value={settings.phone}
+                  onChange={handleChange}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black font-mono text-slate-300 tracking-widest focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Correo Electrónico</label>
+                <input
+                  name="email"
+                  type="email"
+                  value={settings.email}
+                  onChange={handleChange}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-bold text-slate-300 focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Portal Corporativo</label>
+                <input
+                  name="website"
+                  type="text"
+                  value={settings.website}
+                  onChange={handleChange}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-bold text-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all underline decoration-primary/30 underline-offset-4"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Operational Parameters Section */}
+        <Card className="border-white/[0.05] bg-slate-900/40 backdrop-blur-xl rounded-[2.5rem] overflow-hidden">
+          <div className="bg-gradient-to-r from-slate-900 to-slate-950 px-10 py-8 border-b border-white/[0.04]">
+            <h3 className="text-sm font-black uppercase tracking-[0.3em] text-white flex items-center gap-3">
+              <CreditCard className="h-5 w-5 text-emerald-400" />
+              Parámetros Financieros & Operativos
+            </h3>
           </div>
-
-          <div className="grid grid-cols-1 gap-x-8 gap-y-8 md:grid-cols-3 mt-8 pt-8 border-t border-gray-900/10">
-            <div className="md:col-span-1">
-              <h2 className="text-base font-semibold leading-7 text-gray-900">Opciones por Defecto</h2>
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                Valores predeterminados para nuevas cotizaciones.
-              </p>
-            </div>
-
-            <div className="grid max-w-2xl grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-6 md:col-span-2">
-              <div className="sm:col-span-2">
-                <label htmlFor="defaultCurrency" className="block text-sm font-medium leading-6 text-gray-900">
-                  Moneda por Defecto
-                </label>
-                <div className="mt-2">
+          <CardContent className="p-10 space-y-10">
+            <div className="grid gap-10 md:grid-cols-3">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Divisa de Referencia</label>
+                <div className="relative">
                   <select
-                    id="defaultCurrency"
                     name="defaultCurrency"
                     value={settings.defaultCurrency}
                     onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
+                    className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black text-white tracking-[0.2em] outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none uppercase"
                   >
                     <option value="PEN">Soles (PEN)</option>
                     <option value="USD">Dólares (USD)</option>
                   </select>
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                    <ChevronRight className="h-4 w-4 rotate-90" />
+                  </div>
                 </div>
               </div>
-
-              <div className="sm:col-span-2">
-                <label htmlFor="defaultValidityDays" className="block text-sm font-medium leading-6 text-gray-900">
-                  Días de Validez
-                </label>
-                <div className="mt-2">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Vigencia Propuesta (Días)</label>
+                <div className="relative">
                   <input
-                    type="number"
                     name="defaultValidityDays"
-                    id="defaultValidityDays"
+                    type="number"
                     min="1"
                     value={settings.defaultValidityDays}
                     onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
+                    className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black font-mono text-white outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                   />
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-black text-slate-600 uppercase tracking-widest">DAYS</div>
                 </div>
               </div>
-
-              <div className="sm:col-span-2">
-                <label htmlFor="defaultIgvPercentage" className="block text-sm font-medium leading-6 text-gray-900">
-                  % IGV
-                </label>
-                <div className="mt-2">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Impuesto General (IGV)</label>
+                <div className="relative">
                   <input
-                    type="number"
                     name="defaultIgvPercentage"
-                    id="defaultIgvPercentage"
+                    type="number"
                     min="0"
                     max="100"
                     value={settings.defaultIgvPercentage}
                     onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
+                    className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black font-mono text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
                   />
-                </div>
-              </div>
-
-              <div className="sm:col-span-full mt-4">
-                <h3 className="text-sm font-medium text-gray-900">Información para documentos</h3>
-                <hr className="mt-2 mb-4" />
-              </div>
-
-              <div className="sm:col-span-full">
-                <label htmlFor="bankDetails" className="block text-sm font-medium leading-6 text-gray-900">
-                  Cuentas Bancarias (Aparecerán al pie de la cotización)
-                </label>
-                <div className="mt-2">
-                  <textarea
-                    id="bankDetails"
-                    name="bankDetails"
-                    rows={4}
-                    value={settings.bankDetails}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-full">
-                <label htmlFor="notes" className="block text-sm font-medium leading-6 text-gray-900">
-                  Términos y Condiciones / Notas por defecto
-                </label>
-                <div className="mt-2">
-                  <textarea
-                    id="notes"
-                    name="notes"
-                    rows={4}
-                    value={settings.notes}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                  />
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-black text-emerald-500/50 uppercase tracking-widest">% TAX</div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-8 flex items-center justify-end border-t border-gray-900/10 pt-6">
-            <button
-              type="submit"
-              disabled={saving || uploadingLogo || uploadingSignature}
-              className="inline-flex items-center gap-x-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
-            >
-              <Save className="h-4 w-4" />
-              {saving ? 'Guardando...' : 'Guardar Cambios'}
-            </button>
-          </div>
-        </form>
-      </div>
+            <Separator className="bg-white/[0.05]" />
+
+            <div className="grid gap-10 md:grid-cols-2">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Canales de Recaudación (Bancos)</label>
+                <p className="text-[9px] font-bold uppercase text-slate-600 tracking-wider ml-1 mb-2 italic">Sección informativa para footer de documentos</p>
+                <textarea
+                  name="bankDetails"
+                  rows={6}
+                  value={settings.bankDetails}
+                  onChange={handleChange}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-3xl px-8 py-6 text-[13px] font-mono font-medium text-emerald-500/80 focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none leading-relaxed"
+                  placeholder="BCP Soles: 191-XXXXXXXX-X-XX..."
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Términos & Cláusulas Estándar</label>
+                <p className="text-[9px] font-bold uppercase text-slate-600 tracking-wider ml-1 mb-2 italic">Notas legales por defecto en propuestas</p>
+                <textarea
+                  name="notes"
+                  rows={6}
+                  value={settings.notes}
+                  onChange={handleChange}
+                  className="w-full bg-slate-950/50 border-white/[0.05] rounded-3xl px-8 py-6 text-[13px] font-medium text-slate-400 focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none leading-relaxed"
+                  placeholder="1. Tiempo de entrega: 5 días hábiles..."
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </form>
     </div>
   );
 }

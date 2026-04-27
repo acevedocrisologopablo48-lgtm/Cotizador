@@ -4,39 +4,39 @@
 
 @layer base {
   :root {
-    /* FYM Technologies — Industrial Precision */
-    --background: 216 22% 96%;
-    --foreground: 222 45% 10%;
+    /* FYM Technologies — Refined Industrial Identity */
+    --background: 220 16% 96%;
+    --foreground: 224 40% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222 45% 10%;
+    --card-foreground: 224 40% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 45% 10%;
-    --primary: 25 95% 53%;
+    --popover-foreground: 224 40% 10%;
+    --primary: 24 92% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 216 18% 92%;
-    --secondary-foreground: 222 45% 10%;
-    --muted: 216 18% 92%;
-    --muted-foreground: 217 18% 48%;
-    --accent: 216 18% 92%;
-    --accent-foreground: 222 45% 10%;
-    --destructive: 0 72% 51%;
+    --secondary: 220 16% 93%;
+    --secondary-foreground: 224 40% 10%;
+    --muted: 220 16% 93%;
+    --muted-foreground: 220 12% 46%;
+    --accent: 220 16% 93%;
+    --accent-foreground: 224 40% 10%;
+    --destructive: 0 68% 49%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 72% 40%;
+    --success: 152 62% 38%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 94% 50%;
+    --warning: 40 90% 48%;
     --warning-foreground: 32 40% 10%;
-    --info: 211 100% 50%;
+    --info: 214 94% 50%;
     --info-foreground: 0 0% 100%;
-    --border: 220 14% 89%;
-    --input: 220 14% 89%;
-    --ring: 25 95% 53%;
-    --radius: 0.5rem;
+    --border: 220 13% 90%;
+    --input: 220 13% 90%;
+    --ring: 24 92% 50%;
+    --radius: 0.75rem;
 
-    /* Sidebar */
-    --sidebar-bg: 222 44% 8%;
-    --sidebar-fg: 215 22% 72%;
-    --sidebar-hover: 222 35% 14%;
-    --sidebar-muted: 220 16% 50%;
+    /* Sidebar — deep navy */
+    --sidebar-bg: 224 42% 7%;
+    --sidebar-fg: 218 18% 68%;
+    --sidebar-hover: 224 32% 13%;
+    --sidebar-muted: 220 14% 48%;
   }
 }
 
@@ -47,6 +47,29 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+  }
+
+  /* Headings use tighter tracking for premium feel */
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.015em;
+  }
+
+  /* Unified form control styling for raw html inputs/textareas/selects */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="password"],
+  input[type="date"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  textarea,
+  select {
+    font-family: inherit;
   }
 }
 
@@ -60,24 +83,24 @@
 /* Custom scrollbar */
 @layer base {
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.25);
+    background: hsl(var(--muted-foreground) / 0.18);
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.4);
+    background: hsl(var(--muted-foreground) / 0.32);
   }
 }
 
-/* Animations */
+/* ─── Animations ──────────────────────────────────────────── */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes fadeIn {
@@ -85,18 +108,28 @@
   to { opacity: 1; }
 }
 @keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-16px); }
+  from { opacity: 0; transform: translateX(-14px); }
   to { opacity: 1; transform: translateX(0); }
 }
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 
-.animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+.animate-fade-in-up { animation: fadeInUp 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
 .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
 .animate-slide-in-left { animation: slideInLeft 0.3s ease-out forwards; }
-.animate-scale-in { animation: scaleIn 0.25s ease-out forwards; }
+.animate-scale-in { animation: scaleIn 0.2s ease-out forwards; }
+.animate-slide-down { animation: slideDown 0.25s ease-out forwards; }
+.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
 
 /* Skeleton shimmer */
 @keyframes shimmer {
@@ -130,21 +163,64 @@
 /* Staggered children animation */
 .stagger-children > * {
   opacity: 0;
-  animation: fadeInUp 0.4s ease-out forwards;
+  animation: fadeInUp 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 350ms; }
 
-/* Premium glass card effect */
+/* ─── Premium utility classes ─────────────────────────────── */
 .glass-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid hsl(var(--border));
+}
+
+/* Consistent "settings page" form field styling that matches the design system */
+.form-field {
+  @apply flex h-10 w-full rounded-lg border border-input bg-background px-3.5 py-2 text-sm ring-offset-background transition-all duration-200 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.form-textarea {
+  @apply w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm ring-offset-background transition-all duration-200 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50 resize-y;
+}
+
+.form-select {
+  @apply flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50 appearance-none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.25em 1.25em;
+  padding-right: 2.5rem;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-foreground/80 mb-1.5;
+}
+
+/* Section divider with subtle gradient */
+.section-divider {
+  @apply border-t border-border/60;
+}
+
+/* Stat card subtle top accent */
+.stat-accent {
+  position: relative;
+}
+.stat-accent::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 
 /* ─── Print / PDF ─────────────────────────────────────────── */
