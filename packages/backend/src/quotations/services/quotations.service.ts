@@ -2,11 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { QuotationCalculatorService } from './quotation-calculator.service';
 
+import { AppConfigService } from '../../app-config/app-config.service';
+
 @Injectable()
 export class QuotationsService {
   constructor(
     private firebase: FirebaseService,
     private calculator: QuotationCalculatorService,
+    private configService: AppConfigService,
   ) {}
 
   private get col() {
@@ -138,8 +141,14 @@ export class QuotationsService {
     const number = await this.generateQuotationNumber();
     const id = this.firebase.generateId();
     const now = new Date();
+
+    const companySettings = await this.configService.getCompanySettings();
+
     const docData = {
       ...data,
+      validityDays: data.validityDays ?? companySettings.defaultValidityDays ?? 15,
+      currency: data.currency ?? companySettings.defaultCurrency ?? 'PEN',
+      igvPercentage: data.igvPercentage ?? companySettings.defaultIgvPercentage ?? 18,
       quotationNumber: number,
       status: 'DRAFT',
       createdBy: userId,
@@ -153,7 +162,8 @@ export class QuotationsService {
   async update(id: string, data: any) {
     const doc = await this.col.doc(id).get();
     if (!doc.exists) throw new NotFoundException('Cotización no encontrada');
-    if (doc.data()?.status !== 'DRAFT') {
+    const isOnlyAttachments = Object.keys(data).every(k => ['pdfUrl', 'pdfName', 'xlsxUrl', 'xlsxName'].includes(k));
+    if (doc.data()?.status !== 'DRAFT' && !isOnlyAttachments) {
       throw new BadRequestException('Solo se pueden editar cotizaciones en borrador');
     }
     const updateData = { ...data, updatedAt: new Date() };

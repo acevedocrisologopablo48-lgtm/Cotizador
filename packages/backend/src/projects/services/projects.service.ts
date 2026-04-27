@@ -93,8 +93,8 @@ export class ProjectsService {
     const qDoc = await this.firebase.db.collection('quotations').doc(quotationId).get();
     if (!qDoc.exists) throw new NotFoundException('Cotización no encontrada');
     const quotation = qDoc.data()!;
-    if (quotation.status !== 'APPROVED') {
-      throw new BadRequestException('La cotización debe estar aprobada');
+    if (quotation.status !== 'APPROVED' && quotation.status !== 'SENT') {
+      throw new BadRequestException('La cotización debe estar aprobada o enviada');
     }
 
     const existingSnap = await this.col.where('quotationId', '==', quotationId).get();
@@ -108,7 +108,7 @@ export class ProjectsService {
       quotationId,
       companyId: quotation.companyId,
       name: quotation.title,
-      approvedBudget: quotation.total,
+      approvedBudget: quotation.total || 0,
       status: 'PLANNING',
       createdAt: now,
       updatedAt: now,
