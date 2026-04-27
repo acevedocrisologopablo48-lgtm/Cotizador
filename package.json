@@ -7,11 +7,17 @@
     "dev:backend": "pnpm --filter backend dev",
     "dev:frontend": "pnpm --filter frontend dev",
     "build": "pnpm --filter shared build && pnpm --filter backend build && pnpm --filter frontend build",
+    "build:backend": "pnpm --filter shared build && pnpm --filter backend build",
+    "build:frontend": "pnpm --filter frontend build",
     "lint": "pnpm -r lint",
-    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\""
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\"",
+    "deploy:frontend": "pnpm --filter frontend build && firebase deploy --only hosting",
+    "deploy:firebase": "firebase deploy --only hosting,firestore:rules,firestore:indexes,storage",
+    "deploy:backend:note": "echo Backend se despliega desde Railway conectado al repo (ver README)"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "firebase-tools": "^14.25.1",
     "prettier": "^3.4.2",
     "typescript": "^5.6.3"
   }
