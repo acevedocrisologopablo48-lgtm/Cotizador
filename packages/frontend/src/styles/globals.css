@@ -4,39 +4,39 @@
 
 @layer base {
   :root {
-    /* FYM Technologies — Refined Industrial Identity */
-    --background: 220 16% 96%;
-    --foreground: 224 40% 10%;
+    /* FYM Technologies — Balanced cool-corporate palette */
+    --background: 218 26% 96%;
+    --foreground: 222 34% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 224 40% 10%;
+    --card-foreground: 222 34% 13%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 40% 10%;
-    --primary: 24 92% 50%;
+    --popover-foreground: 222 34% 13%;
+    --primary: 221 72% 54%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 16% 93%;
-    --secondary-foreground: 224 40% 10%;
-    --muted: 220 16% 93%;
-    --muted-foreground: 220 12% 46%;
-    --accent: 220 16% 93%;
-    --accent-foreground: 224 40% 10%;
-    --destructive: 0 68% 49%;
+    --secondary: 218 20% 91%;
+    --secondary-foreground: 222 34% 13%;
+    --muted: 218 20% 91%;
+    --muted-foreground: 220 12% 41%;
+    --accent: 214 30% 88%;
+    --accent-foreground: 222 34% 13%;
+    --destructive: 0 72% 52%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 62% 38%;
+    --success: 162 55% 38%;
     --success-foreground: 0 0% 100%;
-    --warning: 40 90% 48%;
-    --warning-foreground: 32 40% 10%;
-    --info: 214 94% 50%;
+    --warning: 40 88% 50%;
+    --warning-foreground: 30 45% 14%;
+    --info: 204 82% 47%;
     --info-foreground: 0 0% 100%;
-    --border: 220 13% 90%;
-    --input: 220 13% 90%;
-    --ring: 24 92% 50%;
+    --border: 218 16% 85%;
+    --input: 218 16% 85%;
+    --ring: 221 72% 54%;
     --radius: 0.75rem;
 
     /* Sidebar — deep navy */
-    --sidebar-bg: 224 42% 7%;
-    --sidebar-fg: 218 18% 68%;
-    --sidebar-hover: 224 32% 13%;
-    --sidebar-muted: 220 14% 48%;
+    --sidebar-bg: 223 36% 10%;
+    --sidebar-fg: 218 18% 74%;
+    --sidebar-hover: 223 26% 16%;
+    --sidebar-muted: 218 14% 55%;
   }
 }
 
