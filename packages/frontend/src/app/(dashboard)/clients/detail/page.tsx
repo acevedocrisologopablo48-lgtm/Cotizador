@@ -1,6 +1,10 @@
+import { Suspense } from 'react';
 import ClientDetailPage from './client-page';
 
-
 export default function Page() {
-  return <ClientDetailPage />;
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Cargando...</div>}>
+      <ClientDetailPage />
+    </Suspense>
+  );
 }

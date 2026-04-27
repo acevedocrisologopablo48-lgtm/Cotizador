@@ -51,7 +51,14 @@ export class AppConfigService {
       website: '', 
       bankDetails: '', 
       notes: '', 
-      logoUrl: '' 
+      logoUrl: '',
+      slogan: '',
+      legalRepresentative: '',
+      legalRepresentativeRole: '',
+      defaultCurrency: 'PEN',
+      defaultValidityDays: 15,
+      defaultIgvPercentage: 18,
+      signatureUrl: '' 
     };
     return doc.data() || {};
   }
@@ -67,6 +74,13 @@ export class AppConfigService {
       bankDetails: data.bankDetails ?? '',
       notes: data.notes ?? '',
       logoUrl: data.logoUrl ?? '',
+      slogan: data.slogan ?? '',
+      legalRepresentative: data.legalRepresentative ?? '',
+      legalRepresentativeRole: data.legalRepresentativeRole ?? '',
+      defaultCurrency: data.defaultCurrency ?? 'PEN',
+      defaultValidityDays: Number(data.defaultValidityDays) || 15,
+      defaultIgvPercentage: Number(data.defaultIgvPercentage) || 18,
+      signatureUrl: data.signatureUrl ?? '',
       updatedAt: new Date(),
     };
     await this.companyDoc.set(sanitized, { merge: true });

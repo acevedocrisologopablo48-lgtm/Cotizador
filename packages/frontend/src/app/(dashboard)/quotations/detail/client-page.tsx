@@ -71,6 +71,7 @@ export default function QuotationDetailPage() {
     description: '',
     validityDays: '30',
     currency: 'PEN',
+    igvPercentage: '18',
     introductionText: '',
     termsAndConditions: '',
   });
@@ -168,6 +169,7 @@ export default function QuotationDetailPage() {
       description: quotation.description || '',
       validityDays: String(quotation.validityDays || '30'),
       currency: quotation.currency || 'PEN',
+      igvPercentage: String(quotation.igvPercentage ?? '18'),
       introductionText: quotation.introductionText || '',
       termsAndConditions: quotation.termsAndConditions || '',
     });
@@ -181,6 +183,7 @@ export default function QuotationDetailPage() {
         description: metaForm.description,
         validityDays: parseInt(metaForm.validityDays, 10) || 30,
         currency: metaForm.currency,
+        igvPercentage: parseFloat(metaForm.igvPercentage) || 18,
         introductionText: metaForm.introductionText || undefined,
         termsAndConditions: metaForm.termsAndConditions || undefined,
       }, token!);
@@ -605,91 +608,132 @@ export default function QuotationDetailPage() {
       </div>
 
       {/* ══ Print / PDF view ═════════════════════════════════ */}
-      <div className="hidden print:block text-[10pt] text-gray-900 font-sans">
-        {/* Letterhead */}
-        <div className="flex items-start justify-between border-b-2 border-gray-700 pb-4 mb-6">
-          <div className="flex items-center gap-4">
+      <div className="hidden print:block font-sans" style={{ fontSize: '10pt', color: '#111827', lineHeight: '1.4' }}>
+
+        {/* ── Top accent stripe ── */}
+        <div style={{ height: '5px', background: 'linear-gradient(90deg, #ea580c 0%, #f97316 60%, #fbbf24 100%)', marginBottom: '0' }} />
+
+        {/* ── Header ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 0 14px', borderBottom: '2px solid #ea580c', marginBottom: '18px' }}>
+          {/* Left: logo + company info */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             {companySettings?.logoUrl && (
-              <img src={companySettings.logoUrl} alt="Logo" className="h-16 w-auto object-contain" />
+              <img src={companySettings.logoUrl} alt="Logo" style={{ height: '52px', width: 'auto', objectFit: 'contain' }} />
             )}
             <div>
-              <h1 className="text-[16pt] font-bold">{companySettings?.name || 'FYM Technologies'}</h1>
-              <p className="text-[9pt] text-gray-500">
-                {companySettings?.ruc && `RUC: ${companySettings.ruc} | `}
-                {companySettings?.phone && `${companySettings.phone} | `}
-                {companySettings?.email}
+              <p style={{ fontSize: '15pt', fontWeight: '800', color: '#111827', margin: '0 0 2px' }}>
+                {companySettings?.name || 'FYM Technologies'}
               </p>
-              {companySettings?.address && <p className="text-[9pt] text-gray-500">{companySettings.address}</p>}
+              {companySettings?.slogan && (
+                <p style={{ fontSize: '8pt', color: '#6b7280', fontStyle: 'italic', margin: '0 0 3px' }}>{companySettings.slogan}</p>
+              )}
+              <p style={{ fontSize: '8pt', color: '#6b7280', margin: '0' }}>
+                {[
+                  companySettings?.ruc && `RUC: ${companySettings.ruc}`,
+                  companySettings?.phone,
+                  companySettings?.email,
+                ].filter(Boolean).join('  ·  ')}
+              </p>
+              {companySettings?.address && (
+                <p style={{ fontSize: '8pt', color: '#6b7280', margin: '1px 0 0' }}>{companySettings.address}</p>
+              )}
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[14pt] font-bold">{quotation.quotationNumber}</p>
-            <p className="text-[9pt] text-gray-500">
-              Fecha: {new Date(quotation.createdAt).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-            </p>
+
+          {/* Right: COTIZACIÓN badge */}
+          <div style={{ textAlign: 'right', minWidth: '160px' }}>
+            <div style={{ background: '#1e3a5f', color: '#fff', padding: '10px 16px', borderRadius: '6px', display: 'inline-block' }}>
+              <p style={{ fontSize: '7pt', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', margin: '0 0 4px', opacity: '0.75' }}>Cotización</p>
+              <p style={{ fontSize: '16pt', fontWeight: '800', margin: '0', letterSpacing: '-0.5px' }}>{quotation.quotationNumber}</p>
+              <p style={{ fontSize: '7.5pt', margin: '4px 0 0', opacity: '0.7' }}>
+                {new Date(quotation.createdAt).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Client + details */}
-        <div className="grid grid-cols-2 gap-8 mb-6 text-[9pt]">
-          <div>
-            <p className="font-semibold text-gray-500 uppercase text-[8pt] mb-1">Cliente</p>
-            <p className="font-bold text-[10pt]">{quotation.company?.businessName || '—'}</p>
-            {quotation.company?.ruc && <p>RUC: {quotation.company.ruc}</p>}
-            {quotation.contact && <p>Attn: {quotation.contact.firstName} {quotation.contact.lastName}</p>}
+        {/* ── Client + Details ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '5px', padding: '10px 14px' }}>
+            <p style={{ fontSize: '7pt', fontWeight: '700', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 6px' }}>Cliente</p>
+            <p style={{ fontSize: '11pt', fontWeight: '700', margin: '0 0 3px', color: '#111827' }}>{quotation.company?.businessName || '—'}</p>
+            {quotation.company?.ruc && <p style={{ fontSize: '8.5pt', color: '#374151', margin: '1px 0' }}>RUC: {quotation.company.ruc}</p>}
+            {quotation.contact && (
+              <p style={{ fontSize: '8.5pt', color: '#374151', margin: '1px 0' }}>
+                Attn: {quotation.contact.firstName} {quotation.contact.lastName}
+              </p>
+            )}
           </div>
-          <div>
-            <p className="font-semibold text-gray-500 uppercase text-[8pt] mb-1">Detalles</p>
-            <table className="text-[9pt]">
+          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '5px', padding: '10px 14px' }}>
+            <p style={{ fontSize: '7pt', fontWeight: '700', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 6px' }}>Detalles</p>
+            <table style={{ fontSize: '8.5pt', borderCollapse: 'collapse', width: '100%' }}>
               <tbody>
-                <tr><td className="pr-3 text-gray-500">Moneda</td><td className="font-medium">{currency}</td></tr>
-                <tr><td className="pr-3 text-gray-500">Validez</td><td className="font-medium">{quotation.validityDays || 30} días</td></tr>
-                <tr><td className="pr-3 text-gray-500">Estado</td><td className="font-medium">{quotation.status}</td></tr>
+                <tr>
+                  <td style={{ color: '#6b7280', paddingRight: '12px', paddingBottom: '3px' }}>Moneda</td>
+                  <td style={{ fontWeight: '600', color: '#111827' }}>{currency}</td>
+                </tr>
+                <tr>
+                  <td style={{ color: '#6b7280', paddingRight: '12px', paddingBottom: '3px' }}>Validez</td>
+                  <td style={{ fontWeight: '600', color: '#111827' }}>{quotation.validityDays || 30} días</td>
+                </tr>
+                <tr>
+                  <td style={{ color: '#6b7280', paddingRight: '12px' }}>Estado</td>
+                  <td style={{ fontWeight: '600', color: '#111827' }}>{quotation.status}</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Title */}
-        <div className="mb-4 pb-3 border-b border-gray-200">
-          <h2 className="text-[11pt] font-bold">{quotation.title}</h2>
-          {quotation.description && <p className="text-[9pt] text-gray-600 mt-1">{quotation.description}</p>}
+        {/* ── Title & Description ── */}
+        <div style={{ borderLeft: '3px solid #ea580c', paddingLeft: '12px', marginBottom: '14px' }}>
+          <h2 style={{ fontSize: '12pt', fontWeight: '700', margin: '0 0 3px', color: '#111827' }}>{quotation.title}</h2>
+          {quotation.description && (
+            <p style={{ fontSize: '9pt', color: '#4b5563', margin: '0' }}>{quotation.description}</p>
+          )}
         </div>
 
-        {/* Introduction */}
+        {/* ── Introduction / Scope ── */}
         {quotation.introductionText && (
-          <div className="mb-5 text-[9pt] text-gray-700">
-            <p className="font-semibold mb-1">Descripción / Alcance</p>
-            <p className="leading-relaxed">{quotation.introductionText}</p>
+          <div style={{ marginBottom: '16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '5px', padding: '10px 14px' }}>
+            <p style={{ fontSize: '8pt', fontWeight: '700', color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 5px' }}>Descripción / Alcance</p>
+            <p style={{ fontSize: '9pt', color: '#374151', lineHeight: '1.6', margin: '0', whiteSpace: 'pre-wrap' }}>{quotation.introductionText}</p>
           </div>
         )}
 
-        {/* Sections */}
+        {/* ── Sections ── */}
         {(quotation.sections || []).map((section: any, si: number) => (
-          <div key={section.id} className="mb-5">
-            <div className="bg-gray-100 px-3 py-1.5 mb-1">
-              <h3 className="text-[9pt] font-bold text-gray-700 uppercase tracking-wide">
-                {String.fromCharCode(65 + si)}. {section.name}
+          <div key={section.id} style={{ marginBottom: '18px' }}>
+            {/* Section header */}
+            <div style={{ background: '#1e3a5f', color: '#fff', padding: '6px 12px', borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ background: '#ea580c', color: '#fff', borderRadius: '3px', width: '18px', height: '18px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '8pt', fontWeight: '800', flexShrink: '0' as const }}>
+                {String.fromCharCode(65 + si)}
+              </span>
+              <h3 style={{ fontSize: '9pt', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0' }}>
+                {section.name}
               </h3>
             </div>
-            <table className="w-full text-[9pt] border-collapse">
+            {section.description && (
+              <p style={{ fontSize: '8pt', color: '#6b7280', margin: '4px 0 6px 4px' }}>{section.description}</p>
+            )}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt', border: '1px solid #e5e7eb', borderTop: 'none' }}>
               <thead>
-                <tr className="border-b border-gray-300 bg-gray-50">
-                  <th className="text-left py-1.5 px-2 font-semibold">Descripción</th>
-                  <th className="text-center py-1.5 px-2 font-semibold w-14">Und.</th>
-                  <th className="text-right py-1.5 px-2 font-semibold w-20">Cant.</th>
-                  <th className="text-right py-1.5 px-2 font-semibold w-24">P. Unit.</th>
-                  <th className="text-right py-1.5 px-2 font-semibold w-24">Subtotal</th>
+                <tr style={{ background: '#f3f4f6', borderBottom: '1px solid #d1d5db' }}>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: '600', color: '#374151' }}>Descripción</th>
+                  <th style={{ textAlign: 'center', padding: '6px 8px', fontWeight: '600', color: '#374151', width: '50px' }}>Und.</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: '600', color: '#374151', width: '72px' }}>Cant.</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: '600', color: '#374151', width: '88px' }}>P. Unit.</th>
+                  <th style={{ textAlign: 'right', padding: '6px 10px', fontWeight: '600', color: '#374151', width: '88px' }}>Subtotal</th>
                 </tr>
               </thead>
               <tbody>
-                {(section.items || []).map((item: any) => (
-                  <tr key={item.id} className="border-b border-gray-100">
-                    <td className="py-1 px-2">{item.description}</td>
-                    <td className="py-1 px-2 text-center text-gray-600">{item.unit}</td>
-                    <td className="py-1 px-2 text-right font-mono">{Number(item.quantity).toFixed(2)}</td>
-                    <td className="py-1 px-2 text-right font-mono">{Number(item.unitPrice).toFixed(2)}</td>
-                    <td className="py-1 px-2 text-right font-mono font-semibold">
+                {(section.items || []).map((item: any, ii: number) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb', background: ii % 2 === 0 ? '#fff' : '#f9fafb' }}>
+                    <td style={{ padding: '5px 10px', color: '#111827' }}>{item.description}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'center', color: '#6b7280', fontFamily: 'monospace' }}>{item.unit}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#374151' }}>{Number(item.quantity).toFixed(2)}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#374151' }}>{Number(item.unitPrice).toFixed(2)}</td>
+                    <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: '#111827' }}>
                       {Number(item.subtotal ?? Number(item.quantity) * Number(item.unitPrice)).toFixed(2)}
                     </td>
                   </tr>
@@ -699,48 +743,64 @@ export default function QuotationDetailPage() {
           </div>
         ))}
 
-        {/* Totals */}
-        <div className="flex justify-end mt-4 mb-6">
-          <div className="w-56 border border-gray-200 rounded">
-            <div className="flex justify-between px-4 py-2 border-b border-gray-100 text-[9pt]">
-              <span className="text-gray-600">Subtotal</span>
-              <span className="font-mono">{fmt(quotation.subtotal)}</span>
+        {/* ── Totals ── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
+          <div style={{ width: '220px', border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', borderBottom: '1px solid #e5e7eb', fontSize: '9pt' }}>
+              <span style={{ color: '#6b7280' }}>Subtotal</span>
+              <span style={{ fontFamily: 'monospace', color: '#111827' }}>{fmt(quotation.subtotal)}</span>
             </div>
-            <div className="flex justify-between px-4 py-2 border-b border-gray-100 text-[9pt]">
-              <span className="text-gray-600">IGV (18%)</span>
-              <span className="font-mono">{fmt(quotation.igv)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', borderBottom: '1px solid #e5e7eb', fontSize: '9pt' }}>
+              <span style={{ color: '#6b7280' }}>IGV ({quotation.igvPercentage ?? 18}%)</span>
+              <span style={{ fontFamily: 'monospace', color: '#111827' }}>{fmt(quotation.igv)}</span>
             </div>
-            <div className="flex justify-between px-4 py-2.5 text-[10pt] font-bold bg-gray-50">
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 14px', fontSize: '10.5pt', fontWeight: '800', background: '#1e3a5f', color: '#fff' }}>
               <span>TOTAL</span>
-              <span className="font-mono">{fmt(quotation.total)}</span>
+              <span style={{ fontFamily: 'monospace' }}>{fmt(quotation.total)}</span>
             </div>
           </div>
         </div>
 
-        {/* Terms and Settings */}
-        <div className="text-[8pt] text-gray-600 border-t border-gray-200 pt-3 mt-4 space-y-4">
-          {quotation.termsAndConditions && (
-            <div>
-              <p className="font-semibold text-gray-700 mb-1">Condiciones Comerciales</p>
-              <p className="leading-relaxed whitespace-pre-wrap">{quotation.termsAndConditions}</p>
-            </div>
-          )}
-          {companySettings?.notes && (
-            <div>
-              <p className="font-semibold text-gray-700 mb-1">Notas Generales</p>
-              <p className="leading-relaxed whitespace-pre-wrap">{companySettings.notes}</p>
-            </div>
-          )}
-          {companySettings?.bankDetails && (
-            <div>
-              <p className="font-semibold text-gray-700 mb-1">Cuentas Bancarias</p>
-              <p className="leading-relaxed whitespace-pre-wrap">{companySettings.bankDetails}</p>
+        {/* ── Terms, Notes, Bank + Signature ── */}
+        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '14px', display: 'flex', justifyContent: 'space-between', gap: '24px', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {quotation.termsAndConditions && (
+              <div>
+                <p style={{ fontSize: '7.5pt', fontWeight: '700', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Condiciones Comerciales</p>
+                <p style={{ fontSize: '8pt', color: '#374151', lineHeight: '1.5', margin: '0', whiteSpace: 'pre-wrap' }}>{quotation.termsAndConditions}</p>
+              </div>
+            )}
+            {companySettings?.notes && (
+              <div>
+                <p style={{ fontSize: '7.5pt', fontWeight: '700', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Notas Generales</p>
+                <p style={{ fontSize: '8pt', color: '#374151', lineHeight: '1.5', margin: '0', whiteSpace: 'pre-wrap' }}>{companySettings.notes}</p>
+              </div>
+            )}
+            {companySettings?.bankDetails && (
+              <div>
+                <p style={{ fontSize: '7.5pt', fontWeight: '700', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Cuentas Bancarias</p>
+                <p style={{ fontSize: '8pt', color: '#374151', lineHeight: '1.5', margin: '0', whiteSpace: 'pre-wrap' }}>{companySettings.bankDetails}</p>
+              </div>
+            )}
+          </div>
+
+          {companySettings?.signatureUrl && (
+            <div style={{ width: '180px', flexShrink: '0' as const, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '4px' }}>
+              <img src={companySettings.signatureUrl} alt="Firma" style={{ height: '64px', objectFit: 'contain', marginBottom: '6px' }} />
+              <div style={{ width: '100%', borderTop: '1px solid #6b7280', paddingTop: '6px', textAlign: 'center' }}>
+                <p style={{ fontSize: '8.5pt', fontWeight: '700', color: '#111827', margin: '0' }}>
+                  {companySettings.legalRepresentative || companySettings.name}
+                </p>
+                {companySettings.legalRepresentativeRole && (
+                  <p style={{ fontSize: '7.5pt', color: '#6b7280', margin: '1px 0 0' }}>{companySettings.legalRepresentativeRole}</p>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="mt-8 pt-3 border-t border-gray-200 flex justify-between text-[8pt] text-gray-400">
+        {/* ── Footer ── */}
+        <div style={{ marginTop: '20px', paddingTop: '8px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', fontSize: '7.5pt', color: '#9ca3af' }}>
           <span>{companySettings?.name || 'FYM Technologies'} — Cotización</span>
           <span>Generado el {new Date().toLocaleDateString('es-PE')}</span>
         </div>
@@ -781,6 +841,10 @@ export default function QuotationDetailPage() {
                     <SelectItem value="EUR">EUR — Euro</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="meta-igv">IGV (%)</Label>
+                <Input id="meta-igv" type="number" step="0.1" value={metaForm.igvPercentage || ''} onChange={e => setMetaForm(f => ({ ...f, igvPercentage: e.target.value }))} />
               </div>
             </div>
             <div>

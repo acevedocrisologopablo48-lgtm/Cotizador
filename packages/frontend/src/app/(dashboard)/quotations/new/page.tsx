@@ -26,7 +26,7 @@ export default function NewQuotationPage() {
   const [form, setForm] = useState({
     companyId: '', contactId: '', agreementId: '', tipo: '',
     title: '', description: '',
-    validityDays: '15', currency: 'PEN',
+    validityDays: '15', currency: 'PEN', igvPercentage: '18',
     generalExpensesPercentage: '10', profitMarginPercentage: '15',
     introductionText: '', termsAndConditions: '', deliveryTimeDays: '', warrantyText: '',
   });
@@ -42,6 +42,14 @@ export default function NewQuotationPage() {
     if (!token) return;
     api.get<any>('/companies?pageSize=100', token).then(r => setCompanies(r.data || [])).catch(() => {});
     api.get<string[]>('/config/quotation-types', token).then(r => setQuotationTypes(r)).catch(() => {});
+    api.get<any>('/config/company', token).then(r => {
+      setForm(f => ({
+        ...f,
+        validityDays: String(r.defaultValidityDays ?? 15),
+        currency: r.defaultCurrency || 'PEN',
+        igvPercentage: String(r.defaultIgvPercentage ?? 18),
+      }));
+    }).catch(() => {});
   }, [token]);
 
   useEffect(() => {
@@ -71,6 +79,7 @@ export default function NewQuotationPage() {
         description: form.description || undefined,
         validityDays: parseInt(form.validityDays),
         currency: form.currency,
+        igvPercentage: parseFloat(form.igvPercentage) || 18,
         generalExpensesPercentage: parseFloat(form.generalExpensesPercentage),
         profitMarginPercentage: parseFloat(form.profitMarginPercentage),
       };
@@ -221,15 +230,16 @@ export default function NewQuotationPage() {
             <div><Label>Gastos Generales (%)</Label><Input type="number" step="0.1" value={form.generalExpensesPercentage} onChange={e => setForm(f => ({ ...f, generalExpensesPercentage: e.target.value }))} /></div>
             <div><Label>Utilidad (%)</Label><Input type="number" step="0.1" value={form.profitMarginPercentage} onChange={e => setForm(f => ({ ...f, profitMarginPercentage: e.target.value }))} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <Label>Moneda</Label>
               <Select value={form.currency} onValueChange={v => setForm(f => ({ ...f, currency: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="PEN">PEN (S/)</SelectItem><SelectItem value="USD">USD ($)</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="PEN">PEN (S/)</SelectItem><SelectItem value="USD">USD ($)</SelectItem><SelectItem value="EUR">EUR (€)</SelectItem></SelectContent>
               </Select>
             </div>
-            <div><Label>Plazo de entrega (días)</Label><Input type="number" value={form.deliveryTimeDays} onChange={e => setForm(f => ({ ...f, deliveryTimeDays: e.target.value }))} /></div>
+            <div><Label>IGV (%)</Label><Input type="number" step="0.1" value={form.igvPercentage} onChange={e => setForm(f => ({ ...f, igvPercentage: e.target.value }))} /></div>
+            <div><Label>Plazo entrega (días)</Label><Input type="number" value={form.deliveryTimeDays} onChange={e => setForm(f => ({ ...f, deliveryTimeDays: e.target.value }))} /></div>
           </div>
         </CardContent>
       </Card>
