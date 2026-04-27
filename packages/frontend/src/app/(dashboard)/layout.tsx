@@ -18,6 +18,7 @@ import {
   Settings,
   UserCheck,
   ChevronRight,
+  Shield,
 } from 'lucide-react';
 
 const navItems = [
@@ -38,6 +39,12 @@ const navItems = [
       UserRole.ACCOUNTANT,
       UserRole.ENGINEER,
     ],
+  },
+  {
+    href: '/users',
+    label: 'Usuarios',
+    icon: Shield,
+    roles: [UserRole.ADMIN],
   },
   { href: '/settings', label: 'Configuraciones', icon: Settings },
 ];
@@ -78,7 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const SidebarContent = () => (
     <div className="flex flex-col h-full select-none font-jakarta">
       {/* Brand */}
-      <div className="flex h-[72px] items-center px-6 border-b border-white/[0.04] shrink-0">
+      <div className="flex h-[72px] items-center px-6 border-b border-border/50 shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative group/logo">
             <div className="absolute -inset-1 bg-gradient-to-tr from-primary/40 to-indigo-500/40 rounded-xl blur-sm opacity-0 group-hover/logo:opacity-100 transition-opacity duration-500" />
@@ -134,13 +141,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </nav>
 
       {/* User */}
-      <div className="shrink-0 p-4 border-t border-white/[0.04] bg-white/[0.02]">
-        <div className="group/user flex items-center gap-3 rounded-2xl p-2.5 bg-slate-900/40 border border-white/[0.03] transition-all hover:bg-slate-900/60">
+      <div className="shrink-0 p-4 border-t border-border/50 bg-muted/30">
+        <div className="group/user flex items-center gap-3 rounded-2xl p-2.5 bg-muted/40 border border-border/40 transition-all hover:bg-muted/60">
           <div className="relative">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-indigo-600 text-white text-xs font-black shadow-lg">
               {initials}
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-900 bg-emerald-500" />
+            <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card bg-emerald-500" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-bold text-slate-100 truncate tracking-tight">{user.fullName}</p>
@@ -161,13 +168,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0a0c10] font-jakarta">
+    <div className="flex h-screen overflow-hidden bg-background font-jakarta">
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden animate-in fade-in duration-300" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Mobile sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-[280px] flex-col bg-[#11141b] md:hidden flex transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${
+      <aside className={`fixed inset-y-0 left-0 z-50 w-[280px] flex-col bg-card md:hidden flex transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${
         sidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
       }`}>
         <button
@@ -180,7 +187,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-[280px] flex-col bg-[#0d1016] md:flex border-r border-white/[0.04] relative z-20">
+      <aside className="hidden w-[280px] flex-col bg-card md:flex border-r border-border/60 relative z-20">
         <SidebarContent />
       </aside>
 
@@ -192,7 +199,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Mobile topbar */}
-        <header className="flex h-[60px] items-center justify-between border-b border-white/[0.04] bg-[#0d1016]/80 backdrop-blur-md px-4 md:hidden shrink-0 z-30">
+        <header className="flex h-[60px] items-center justify-between border-b border-border/60 bg-card/80 backdrop-blur-md px-4 md:hidden shrink-0 z-30">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -216,7 +223,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         <main className="flex-1 overflow-y-auto relative z-10 custom-scrollbar scroll-smooth">
-          <div className="min-h-full bg-[#0a0c10]">
+          <div className="min-h-full bg-background">
             <div className="mx-auto max-w-[1600px] px-6 py-8 md:px-10 md:py-10 lg:px-12">
               {children}
             </div>

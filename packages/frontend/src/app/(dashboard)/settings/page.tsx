@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Separator } from '@/components/ui/separator';
 import {
   Save, Upload, Image as ImageIcon, Building2, FileText,
-  CreditCard, Loader2, CheckCircle2, ChevronRight,
+  CreditCard, Loader2, CheckCircle2, ChevronRight, Plus, Trash2, Tag,
 } from 'lucide-react';
 
 interface CompanySettings {
@@ -60,9 +60,45 @@ export default function SettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
 
+  // Quotation types
+  const [quotationTypes, setQuotationTypes] = useState<string[]>([]);
+  const [newQtType, setNewQtType] = useState('');
+  const [savingTypes, setSavingTypes] = useState(false);
+
   useEffect(() => {
     loadSettings();
+    loadQuotationTypes();
   }, [token]);
+
+  const loadQuotationTypes = async () => {
+    try {
+      const data = await api.get<string[]>('/config/quotation-types', token ?? undefined);
+      setQuotationTypes(data || []);
+    } catch {
+      // non-critical, skip
+    }
+  };
+
+  const addQtType = () => {
+    const t = newQtType.trim();
+    if (!t || quotationTypes.includes(t)) return;
+    setQuotationTypes(prev => [...prev, t]);
+    setNewQtType('');
+  };
+
+  const removeQtType = (t: string) => setQuotationTypes(prev => prev.filter(x => x !== t));
+
+  const saveQuotationTypes = async () => {
+    setSavingTypes(true);
+    try {
+      await api.put('/config/quotation-types', { types: quotationTypes }, token ?? undefined);
+      addToast('Tipos de cotización guardados', 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Error al guardar tipos', 'error');
+    } finally {
+      setSavingTypes(false);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -525,6 +561,59 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </form>
+
+      {/* Quotation Types Card */}
+      <Card className="group relative overflow-hidden border-white/[0.05] bg-slate-900/40 backdrop-blur-2xl rounded-[2rem]">
+        <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+        <CardHeader className="p-8 pb-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-black uppercase tracking-[0.15em] flex items-center gap-2 text-white">
+              <div className="h-6 w-6 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <Tag className="h-3.5 w-3.5 text-amber-400" />
+              </div>
+              Tipos de Cotización
+            </CardTitle>
+            <Button
+              onClick={saveQuotationTypes}
+              disabled={savingTypes}
+              size="sm"
+              className="h-9 px-5 rounded-xl text-xs font-bold uppercase tracking-wider"
+            >
+              {savingTypes ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+              Guardar
+            </Button>
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 ml-8 mt-1">Categorías disponibles al crear una nueva cotización</p>
+        </CardHeader>
+        <CardContent className="p-8 pt-0 space-y-6">
+          <div className="flex gap-3">
+            <input
+              value={newQtType}
+              onChange={e => setNewQtType(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addQtType())}
+              placeholder="Ej. Presupuesto Referencial"
+              className="flex-1 bg-slate-950/50 border border-white/[0.05] rounded-2xl px-6 py-3 text-sm font-medium text-white focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+            />
+            <Button onClick={addQtType} variant="outline" size="sm" className="h-11 w-11 p-0 rounded-2xl border-white/10 text-slate-300 hover:text-white hover:bg-white/10">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          {quotationTypes.length === 0 ? (
+            <p className="text-[11px] text-slate-600 italic text-center py-4">No hay tipos definidos. Se usará &quot;Cotización&quot; por defecto.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {quotationTypes.map(t => (
+                <div key={t} className="flex items-center gap-2 bg-slate-800/60 border border-white/5 px-3 py-1.5 rounded-xl">
+                  <span className="text-xs font-semibold text-slate-200">{t}</span>
+                  <button onClick={() => removeQtType(t)} className="text-slate-500 hover:text-red-400 transition-colors">
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

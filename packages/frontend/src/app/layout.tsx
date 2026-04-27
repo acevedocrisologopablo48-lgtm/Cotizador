@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${inter.variable} ${jakarta.variable} ${mono.variable}`}>
+    <html lang="es" className={`${inter.variable} ${jakarta.variable} ${mono.variable} dark`}>
       <body className={jakarta.className}>
         <AuthProvider>
           <ToastProvider>{children}</ToastProvider>

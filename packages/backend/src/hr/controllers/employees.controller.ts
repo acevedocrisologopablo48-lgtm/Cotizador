@@ -24,6 +24,7 @@ export class EmployeesController {
   constructor(private readonly service: EmployeesService) {}
 
   @Get()
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT', 'FIELD_SUPERVISOR', 'ENGINEER')
   @ApiOperation({ summary: 'Listar empleados' })
   @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'INACTIVE'] })
   @ApiQuery({ name: 'search', required: false, description: 'Buscar por nombre, documento o cargo' })
@@ -36,6 +37,7 @@ export class EmployeesController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT', 'FIELD_SUPERVISOR', 'ENGINEER')
   @ApiOperation({ summary: 'Detalle de empleado' })
   async findOne(@Param('id') id: string) {
     const data = await this.service.findOne(id);

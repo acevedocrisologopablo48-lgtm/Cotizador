@@ -29,9 +29,9 @@ const WORKER_ROLES = [
   'SOLDADOR', 'ELECTRICISTA', 'PINTOR', 'RIGGER', 'ARENADOR',
 ];
 
-export default function ProjectDetailPage() {
+export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) {
   const searchParams = useSearchParams();
-  const id = searchParams.get('id');
+  const id = idProp ?? searchParams.get('id');
   const { token } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
@@ -178,7 +178,7 @@ export default function ProjectDetailPage() {
                   <div className="px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-[10px] font-black text-primary uppercase tracking-widest">
                     Cliente Partner
                   </div>
-                  <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">{project.company.businessName}</p>
+                  <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">{project.company.tradeName || project.company.businessName || project.company.name}</p>
                 </div>
               )}
             </div>
@@ -213,7 +213,7 @@ export default function ProjectDetailPage() {
                 variant="ghost" 
                 size="sm" 
                 className="h-10 px-6 rounded-xl text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 font-black text-[10px] uppercase tracking-widest"
-                onClick={() => updateStatus('ON_HOLD')}
+                onClick={() => updateStatus('PAUSED')}
               >
                 Pausar
               </Button>
@@ -226,13 +226,22 @@ export default function ProjectDetailPage() {
               </Button>
             </div>
           )}
-          {project.status === 'ON_HOLD' && (
+          {project.status === 'PAUSED' && (
             <Button 
               size="sm" 
               className="h-10 px-8 rounded-xl bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:opacity-90"
               onClick={() => updateStatus('IN_PROGRESS')}
             >
               Reanudar Flujo
+            </Button>
+          )}
+          {project.status === 'COMPLETED' && (
+            <Button 
+              size="sm" 
+              className="h-10 px-8 rounded-xl bg-slate-700 text-white font-black text-[10px] uppercase tracking-widest shadow-xl hover:opacity-90"
+              onClick={() => updateStatus('CLOSED')}
+            >
+              Cerrar Proyecto
             </Button>
           )}
         </div>

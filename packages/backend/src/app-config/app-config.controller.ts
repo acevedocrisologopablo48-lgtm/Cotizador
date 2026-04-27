@@ -16,8 +16,9 @@ export class AppConfigController {
 
   @Put('quotation-types')
   @Roles('ADMIN', 'MANAGER')
-  updateQuotationTypes(@Body('types') types: string[]) {
-    return this.appConfigService.updateQuotationTypes(types ?? []);
+  updateQuotationTypes(@Body() body: any) {
+    const types = Array.isArray(body) ? body : Array.isArray(body?.types) ? body.types : [];
+    return this.appConfigService.updateQuotationTypes(types);
   }
 
   @Get('company')

@@ -12,6 +12,7 @@ export class PettyCashController {
   constructor(private readonly service: PettyCashService) {}
 
   @Get()
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT', 'FIELD_SUPERVISOR', 'ENGINEER')
   @ApiOperation({ summary: 'Listar cajas chicas' })
   async findAll(@Query('projectId') projectId?: string) {
     const data = await this.service.findAll(projectId);
@@ -19,6 +20,7 @@ export class PettyCashController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT', 'FIELD_SUPERVISOR', 'ENGINEER')
   @ApiOperation({ summary: 'Detalle de caja chica' })
   async findOne(@Param('id') id: string) {
     const data = await this.service.findOne(id);
@@ -42,6 +44,7 @@ export class PettyCashController {
   }
 
   @Get(':id/transactions')
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT', 'FIELD_SUPERVISOR', 'ENGINEER')
   @ApiOperation({ summary: 'Listar movimientos' })
   async getTransactions(
     @Param('id') id: string,

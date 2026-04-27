@@ -4,39 +4,85 @@
 
 @layer base {
   :root {
-    /* FYM Technologies — Balanced cool-corporate palette */
-    --background: 218 26% 96%;
-    --foreground: 222 34% 13%;
+    /* FYM Technologies — Light mode (login / auth pages) */
+    --background: 216 20% 96%;
+    --foreground: 220 45% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222 34% 13%;
+    --card-foreground: 220 45% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 34% 13%;
-    --primary: 221 72% 54%;
+    --popover-foreground: 220 45% 10%;
+    --primary: 214 80% 38%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 218 20% 91%;
-    --secondary-foreground: 222 34% 13%;
-    --muted: 218 20% 91%;
-    --muted-foreground: 220 12% 41%;
-    --accent: 214 30% 88%;
-    --accent-foreground: 222 34% 13%;
-    --destructive: 0 72% 52%;
+    --secondary: 216 16% 90%;
+    --secondary-foreground: 220 45% 10%;
+    --muted: 216 16% 90%;
+    --muted-foreground: 218 14% 44%;
+    --accent: 36 90% 50%;
+    --accent-foreground: 30 55% 14%;
+    --destructive: 2 70% 49%;
     --destructive-foreground: 0 0% 100%;
-    --success: 162 55% 38%;
+    --success: 157 60% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 40 88% 50%;
-    --warning-foreground: 30 45% 14%;
-    --info: 204 82% 47%;
+    --warning: 36 90% 50%;
+    --warning-foreground: 30 55% 14%;
+    --info: 200 80% 40%;
     --info-foreground: 0 0% 100%;
-    --border: 218 16% 85%;
-    --input: 218 16% 85%;
-    --ring: 221 72% 54%;
-    --radius: 0.75rem;
+    --border: 216 18% 82%;
+    --input: 216 18% 82%;
+    --ring: 214 80% 38%;
+    --radius: 0.5rem;
 
-    /* Sidebar — deep navy */
-    --sidebar-bg: 223 36% 10%;
-    --sidebar-fg: 218 18% 74%;
-    --sidebar-hover: 223 26% 16%;
-    --sidebar-muted: 218 14% 55%;
+    /* Sidebar — deep charcoal navy */
+    --sidebar-bg: 220 48% 7%;
+    --sidebar-fg: 216 18% 70%;
+    --sidebar-hover: 220 36% 14%;
+    --sidebar-muted: 218 14% 50%;
+  }
+
+  /* ── Dark mode — harmonized with the navy sidebar ── */
+  .dark {
+    /* Base surfaces — three-layer depth system */
+    --background: 224 20% 7%;        /* #0d1016 — deepest layer, main canvas */
+    --foreground: 215 22% 88%;       /* warm off-white text */
+
+    /* Cards sit one stop above the background */
+    --card: 225 18% 10%;             /* #141820 */
+    --card-foreground: 215 22% 88%;
+
+    /* Popovers float above cards */
+    --popover: 225 18% 13%;
+    --popover-foreground: 215 22% 88%;
+
+    /* Primary — electric blue, legible on dark */
+    --primary: 214 82% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary — muted navy surface */
+    --secondary: 223 18% 17%;
+    --secondary-foreground: 215 22% 76%;
+
+    /* Muted — subtlest surface layer */
+    --muted: 223 18% 14%;
+    --muted-foreground: 218 16% 52%;
+
+    /* Accent — amber stays vivid */
+    --accent: 36 88% 52%;
+    --accent-foreground: 30 55% 14%;
+
+    /* Semantic colors */
+    --destructive: 2 72% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 157 58% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 88% 52%;
+    --warning-foreground: 30 55% 14%;
+    --info: 200 82% 50%;
+    --info-foreground: 0 0% 100%;
+
+    /* Structural */
+    --border: 223 18% 16%;
+    --input: 223 18% 17%;
+    --ring: 214 82% 58%;
   }
 }
 

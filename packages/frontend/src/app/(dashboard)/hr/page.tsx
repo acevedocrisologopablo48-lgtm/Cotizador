@@ -18,16 +18,16 @@ const modules = [
     icon: Camera,
     title: 'Control de Asistencias',
     description: 'Registra entradas y salidas con foto obligatoria en tiempo real.',
-    color: 'text-emerald-600',
-    bg: 'bg-emerald-100',
+    color: 'text-amber-700',
+    bg: 'bg-amber-50',
   },
   {
     href: '/hr/timesheets',
     icon: BarChart3,
     title: 'Tareos y Reportes',
     description: 'Consulta horas trabajadas por día, semana o mes y exporta a Excel.',
-    color: 'text-sky-600',
-    bg: 'bg-sky-100',
+    color: 'text-sky-700',
+    bg: 'bg-sky-50',
   },
 ];
 

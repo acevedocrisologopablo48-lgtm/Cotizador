@@ -70,6 +70,8 @@ jobs:
       - name: Build shared + frontend static export
         if: steps.verify.outputs.ready == 'true'
         run: pnpm --filter shared build && pnpm --filter frontend build
+        env:
+          NEXT_STATIC_EXPORT: 'true'
 
       - name: Deploy to Firebase Hosting
         if: steps.verify.outputs.ready == 'true'

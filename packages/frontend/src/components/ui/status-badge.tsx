@@ -8,25 +8,25 @@ interface StatusConfig {
 }
 
 const STATUS_MAP: Record<string, StatusConfig> = {
-  // Quotation statuses
+  // Quotation statuses (aligned with @fym/shared QuotationStatus)
   DRAFT: { label: 'Borrador', variant: 'secondary' },
   REVIEW: { label: 'En Revisión', variant: 'warning' },
-  APPROVED: { label: 'Aprobada', variant: 'info' },
   SENT: { label: 'Enviada', variant: 'purple' },
-  ACCEPTED: { label: 'Aceptada', variant: 'success' },
+  APPROVED: { label: 'Aprobada', variant: 'success' },
   REJECTED: { label: 'Rechazada', variant: 'destructive' },
   EXPIRED: { label: 'Expirada', variant: 'destructive' },
-  CANCELLED: { label: 'Cancelada', variant: 'destructive' },
+  INVOICED: { label: 'Facturada', variant: 'info' },
 
-  // Project statuses
+  // Project statuses (aligned with @fym/shared ProjectStatus)
   PLANNING: { label: 'Planificación', variant: 'secondary' },
   IN_PROGRESS: { label: 'En Progreso', variant: 'info' },
-  ON_HOLD: { label: 'En Pausa', variant: 'warning' },
+  PAUSED: { label: 'En Pausa', variant: 'warning' },
   COMPLETED: { label: 'Completado', variant: 'success' },
 
   // Petty cash / agreement statuses
   OPEN: { label: 'Abierta', variant: 'success' },
   CLOSED: { label: 'Cerrada', variant: 'secondary' },
+  RECONCILING: { label: 'Conciliando', variant: 'warning' },
   ACTIVE: { label: 'Activo', variant: 'success' },
   INACTIVE: { label: 'Inactivo', variant: 'secondary' },
 

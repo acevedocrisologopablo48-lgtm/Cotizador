@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../../common/firebase/firebase.service';
+import { ProjectStatus } from '@fym/shared';
 
 @Injectable()
 export class ProjectsService {
@@ -129,9 +130,14 @@ export class ProjectsService {
   async updateStatus(id: string, status: string) {
     const doc = await this.col.doc(id).get();
     if (!doc.exists) throw new NotFoundException('Proyecto no encontrado');
-    
+
+    const valid = Object.values(ProjectStatus) as string[];
+    if (!valid.includes(status)) {
+      throw new BadRequestException(`Estado inválido: ${status}`);
+    }
+
     const data: any = { status, updatedAt: new Date() };
-    if (status === 'COMPLETED') data.actualEndDate = new Date();
+    if (status === ProjectStatus.COMPLETED) data.actualEndDate = new Date();
     await this.col.doc(id).update(data);
     return { id, ...doc.data(), ...data };
   }

@@ -1,9 +1,9 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "installCommand": "npm install -g pnpm && pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter frontend build",
-  "outputDirectory": "packages/frontend/.next",
+  "rootDirectory": "packages/frontend",
+  "installCommand": "cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm --filter frontend build",
   "env": {
     "NEXT_PUBLIC_API_URL": "https://fym-backend-production.up.railway.app/api/v1"
   }

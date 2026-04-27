@@ -91,15 +91,16 @@ export default function PettyCashPage() {
   }, [token, loadFunds]);
 
   const handleCreate = async () => {
-    if (!createForm.name || !createForm.initialBalance) {
-      addToast('Nombre y saldo inicial son obligatorios', 'error');
+    const initialBalanceNum = parseFloat(createForm.initialBalance);
+    if (!createForm.name.trim() || createForm.initialBalance === '' || Number.isNaN(initialBalanceNum) || initialBalanceNum < 0) {
+      addToast('Nombre y saldo inicial (≥ 0) son obligatorios', 'error');
       return;
     }
     setSaving(true);
     try {
       await api.post('/petty-cash', {
         name: createForm.name,
-        initialBalance: parseFloat(createForm.initialBalance),
+        initialBalance: initialBalanceNum,
         currency: createForm.currency,
         responsibleUserId: user!.id,
       }, token!);

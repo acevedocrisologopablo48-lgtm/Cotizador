@@ -30,9 +30,21 @@ const NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'de
   DRAFT: [{ label: 'Enviar a Revisión', next: 'REVIEW', variant: 'default' }],
   REVIEW: [
     { label: 'Devolver a Borrador', next: 'DRAFT', variant: 'outline' },
-    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Marcar como Enviada', next: 'SENT', variant: 'default' },
   ],
-  APPROVED: [{ label: 'Marcar como Enviada', next: 'SENT', variant: 'default' }],
+  SENT: [
+    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Rechazar', next: 'REJECTED', variant: 'outline' },
+    { label: 'Marcar Vencida', next: 'EXPIRED', variant: 'outline' },
+  ],
+  APPROVED: [{ label: 'Marcar Facturada', next: 'INVOICED', variant: 'default' }],
+  REJECTED: [{ label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' }],
+  EXPIRED: [{ label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' }],
+};
+
+const extractStoragePath = (url: string): string | null => {
+  const m = url.match(/\/o\/([^?]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
 };
 
 const UNIT_LABELS: Record<string, string> = {
@@ -50,9 +62,9 @@ interface ItemForm {
 
 const EMPTY_ITEM: ItemForm = { description: '', unit: 'UND', quantity: '', unitPrice: '' };
 
-export default function QuotationDetailPage() {
+export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}) {
   const searchParams = useSearchParams();
-  const id = searchParams.get('id');
+  const id = idProp ?? searchParams.get('id');
   const { token } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
@@ -111,7 +123,7 @@ export default function QuotationDetailPage() {
   useEffect(() => { load(); }, [load]);
 
   const isDraft = quotation?.status === 'DRAFT';
-  const canEdit = !['SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'CANCELLED'].includes(quotation?.status);
+  const canEdit = quotation?.status === 'DRAFT';
 
   /* ── Status ──────────────────────────────────────────────── */
   const updateStatus = async (status: string) => {
@@ -291,8 +303,11 @@ export default function QuotationDetailPage() {
     try {
       const url = type === 'pdf' ? quotation.pdfUrl : quotation.xlsxUrl;
       if (url) {
-        const fileRef = ref(storage, url);
-        await deleteObject(fileRef).catch(() => {/* already deleted */});
+        const path = extractStoragePath(url);
+        if (path) {
+          const fileRef = ref(storage, path);
+          await deleteObject(fileRef).catch(() => {/* already deleted */});
+        }
       }
       const field = type === 'pdf'
         ? { pdfUrl: null, pdfName: null }

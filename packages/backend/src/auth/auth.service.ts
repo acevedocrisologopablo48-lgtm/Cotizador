@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../common/firebase/firebase.service';
 
 @Injectable()
@@ -85,10 +85,37 @@ export class AuthService {
   async listUsers() {
     const snap = await this.firebase.db
       .collection('users')
-      .where('isActive', '==', true)
       .orderBy('fullName')
       .get();
 
     return this.firebase.docsToArray(snap.docs).map(({ passwordHash, firebaseUid, ...u }: any) => u);
+  }
+
+  async updateUserRole(userId: string, role: string) {
+    const doc = await this.firebase.db.collection('users').doc(userId).get();
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado');
+
+    const user = doc.data() as any;
+    await this.firebase.db.collection('users').doc(userId).update({ role, updatedAt: new Date() });
+
+    if (user.firebaseUid) {
+      await this.firebase.auth.setCustomUserClaims(user.firebaseUid, { role });
+    }
+
+    return { id: userId, role };
+  }
+
+  async updateUserStatus(userId: string, isActive: boolean) {
+    const doc = await this.firebase.db.collection('users').doc(userId).get();
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado');
+
+    const user = doc.data() as any;
+    await this.firebase.db.collection('users').doc(userId).update({ isActive, updatedAt: new Date() });
+
+    if (user.firebaseUid) {
+      await this.firebase.auth.updateUser(user.firebaseUid, { disabled: !isActive });
+    }
+
+    return { id: userId, isActive };
   }
 }

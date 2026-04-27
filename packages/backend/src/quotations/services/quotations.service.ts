@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { QuotationCalculatorService } from './quotation-calculator.service';
+import { QuotationStatus, QUOTATION_STATUS_TRANSITIONS } from '@fym/shared';
 
 import { AppConfigService } from '../../app-config/app-config.service';
 
@@ -176,12 +177,25 @@ export class QuotationsService {
     if (!doc.exists) throw new NotFoundException('Cotización no encontrada');
     const quotation = doc.data()!;
 
+    const validStatuses = Object.values(QuotationStatus) as string[];
+    if (!validStatuses.includes(newStatus)) {
+      throw new BadRequestException(`Estado inválido: ${newStatus}`);
+    }
+
+    const currentStatus = (quotation.status || QuotationStatus.DRAFT) as QuotationStatus;
+    const allowed = QUOTATION_STATUS_TRANSITIONS[currentStatus] || [];
+    if (currentStatus !== newStatus && !allowed.includes(newStatus as QuotationStatus)) {
+      throw new BadRequestException(
+        `Transición no permitida: ${currentStatus} → ${newStatus}`,
+      );
+    }
+
     const data: any = { status: newStatus, updatedAt: new Date() };
-    if (newStatus === 'APPROVED') {
+    if (newStatus === QuotationStatus.APPROVED) {
       data.approvedBy = userId;
       data.approvedAt = new Date();
     }
-    if (newStatus === 'SENT') {
+    if (newStatus === QuotationStatus.SENT) {
       data.sentAt = new Date();
       data.expiresAt = new Date(Date.now() + (quotation.validityDays || 15) * 86400000);
     }

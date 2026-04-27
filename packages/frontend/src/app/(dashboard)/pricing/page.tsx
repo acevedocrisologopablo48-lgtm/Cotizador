@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import {
   Plus, Search, Edit, Trash2, History, Layers, 
   Package, Filter, ChevronRight, Calculator,
   ArrowUpDown, MoreHorizontal, FileText, CheckCircle2,
-  AlertCircle, TrendingUp, Info
+  AlertCircle, TrendingUp, Info, Gauge, ShieldAlert
 } from 'lucide-react';
 
 const SUPPLY_TYPES = [
@@ -220,6 +221,30 @@ export default function PricingPage() {
             Nuevo Recurso
           </Button>
         </div>
+      </div>
+
+      {/* ── Sub-modules quick nav ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Link href="/pricing/performance-rates" className="group flex items-center gap-4 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-600 rounded-2xl p-5 transition-all shadow-sm hover:shadow-md">
+          <div className="h-11 w-11 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center border border-amber-100 dark:border-amber-800 group-hover:bg-amber-100 transition-colors">
+            <Gauge className="h-5 w-5 text-amber-700 dark:text-amber-400" />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-sm">Tasas de Rendimiento</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Productividad estándar por especialidad</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-amber-600 transition-colors" />
+        </Link>
+        <Link href="/pricing/risk-variables" className="group flex items-center gap-4 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-600 rounded-2xl p-5 transition-all shadow-sm hover:shadow-md">
+          <div className="h-11 w-11 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center border border-red-100 dark:border-red-800 group-hover:bg-red-100 transition-colors">
+            <ShieldAlert className="h-5 w-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-sm">Variables de Riesgo</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Factores de incremento por condición de obra</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-red-500 transition-colors" />
+        </Link>
       </div>
 
       {/* ── Command Center Filters ── */}

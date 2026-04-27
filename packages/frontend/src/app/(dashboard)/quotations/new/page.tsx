@@ -192,12 +192,15 @@ export default function NewQuotationPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Persona de Contacto</Label>
-                  <Select value={form.contactId} onValueChange={v => setForm(f => ({ ...f, contactId: v }))}>
+                  <Select
+                    value={form.contactId || '_none'}
+                    onValueChange={v => setForm(f => ({ ...f, contactId: v === '_none' ? '' : v }))}
+                  >
                     <SelectTrigger className="form-select h-11" disabled={!form.companyId}>
                       <SelectValue placeholder={form.companyId ? "Seleccionar contacto" : "Primero elija cliente"} />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl">
-                      <SelectItem value="">Sin contacto específico</SelectItem>
+                      <SelectItem value="_none">Sin contacto específico</SelectItem>
                       {contacts.map(c => <SelectItem key={c.id} value={c.id} className="rounded-lg">{c.fullName}</SelectItem>)}
                     </SelectContent>
                   </Select>
