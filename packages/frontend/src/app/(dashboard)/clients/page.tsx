@@ -17,9 +17,10 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Plus, Search, ChevronLeft, ChevronRight, Building2, Pencil,
-  CheckCircle2, FileText, Briefcase
+  CheckCircle2, FileText, Briefcase, Trash2, AlertTriangle
 } from 'lucide-react';
 
 interface Company {
@@ -46,11 +47,14 @@ interface CompaniesResponse {
 export default function ClientsPage() {
   const { token, user } = useAuth();
   const canEdit = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'ENGINEER';
+  const canDelete = user?.role === 'ADMIN' || user?.role === 'MANAGER';
   const [companies, setCompanies] = useState<Company[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchCompanies = useCallback(
     async (page = 1, searchTerm = '') => {
@@ -86,6 +90,21 @@ export default function ClientsPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     fetchCompanies(1, search);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget || !token) return;
+    setIsDeleting(true);
+    try {
+      await api.delete(`/companies/${deleteTarget.id}`, token);
+      setDeleteTarget(null);
+      fetchCompanies(meta.page, search);
+    } catch (e: any) {
+      // keep dialog open on error so user can retry
+      alert(e.message);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const statColorClass: Record<string, { wrap: string; icon: string }> = {
@@ -261,12 +280,24 @@ export default function ClientsPage() {
                     <StatusBadge status={company.isActive ? 'ACTIVE' : 'INACTIVE'} className="uppercase tracking-wide" />
                   </TableCell>
                   <TableCell className="py-4 text-right">
-                    <div className="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
-                      <Link href={`/clients/detail?id=${company.id}&edit=true`}>
-                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5">
-                          <Pencil className="h-4 w-4" />
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                      {canEdit && (
+                        <Link href={`/clients/detail?id=${company.id}&edit=true`}>
+                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-xl text-slate-400 hover:text-destructive hover:bg-destructive/5"
+                          onClick={() => setDeleteTarget(company)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
-                      </Link>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -309,6 +340,37 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar Cliente
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-1">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              ¿Estás seguro de que deseas eliminar el cliente?
+            </p>
+            <p className="font-bold text-slate-900 dark:text-slate-100">
+              {deleteTarget?.tradeName || deleteTarget?.businessName}
+            </p>
+            <p className="text-xs text-slate-500 pt-1">
+              Esta acción desactivará el registro. Los datos históricos se conservarán.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? 'Eliminando…' : 'Eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -29,6 +29,14 @@ function useCameraCapture() {
   const [captured, setCaptured] = useState<{ blob: Blob; dataUrl: string } | null>(null);
   const [isStarting, setIsStarting] = useState(false);
 
+  // Attach stream to video element after React renders the <video> node
+  useEffect(() => {
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
   const start = useCallback(async () => {
     setCameraError(null);
     setCaptured(null);
@@ -36,10 +44,6 @@ function useCameraCapture() {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
       setStream(s);
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-        await videoRef.current.play();
-      }
     } catch (err: any) {
       if (err.name === 'NotAllowedError') {
         setCameraError('Permiso de cámara denegado. Por favor, habilita la cámara en tu navegador.');

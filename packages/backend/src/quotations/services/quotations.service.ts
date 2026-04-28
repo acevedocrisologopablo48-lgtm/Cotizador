@@ -41,6 +41,9 @@ export class QuotationsService {
     const { docs, total } = await this.firebase.paginatedQuery(query, page, pageSize);
     let data = this.firebase.docsToArray(docs);
 
+    // Exclude soft-deleted records
+    data = data.filter((item: any) => !item.deletedAt);
+
     // Populate company and users
     for (const item of data) {
       if (item.companyId) {
@@ -206,6 +209,13 @@ export class QuotationsService {
 
   async recalculate(id: string) {
     return this.calculator.recalculateQuotation(id);
+  }
+
+  async delete(id: string) {
+    const doc = await this.col.doc(id).get();
+    if (!doc.exists) throw new NotFoundException('Cotización no encontrada');
+    await this.col.doc(id).update({ deletedAt: new Date(), updatedAt: new Date() });
+    return { id };
   }
 
   async duplicate(id: string, userId: string) {

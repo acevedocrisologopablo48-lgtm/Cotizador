@@ -11,8 +11,9 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
 import { TableSkeleton, TableError } from '@/components/ui/skeleton';
-import { Search, Eye } from 'lucide-react';
+import { Search, Eye, Trash2, AlertTriangle } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 const STATUS_LABELS: Record<string, { label: string; variant: 'info' | 'success' | 'warning' | 'error' | 'secondary' }> = {
   PLANNING: { label: 'Planificación', variant: 'secondary' },
@@ -34,6 +35,8 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fmt = (val: number | string) => {
     return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(val));
@@ -58,6 +61,21 @@ export default function ProjectsPage() {
   }, [token, search, statusFilter, addToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget || !token) return;
+    setIsDeleting(true);
+    try {
+      await api.delete(`/projects/${deleteTarget.id}`, token);
+      addToast('Proyecto eliminado correctamente', 'success');
+      setDeleteTarget(null);
+      load(meta.page);
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const statColorClass: Record<string, { wrap: string; icon: string }> = {
     indigo: { wrap: 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20', icon: 'text-indigo-600 dark:text-indigo-400' },
@@ -212,9 +230,17 @@ export default function ProjectsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="py-4 text-right">
-                      <div className="opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
                         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5">
                           <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-xl text-slate-400 hover:text-destructive hover:bg-destructive/5"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -259,6 +285,37 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar Proyecto
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-1">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              ¿Estás seguro de que deseas eliminar este proyecto?
+            </p>
+            <p className="font-bold text-slate-900 dark:text-slate-100">
+              {deleteTarget?.projectCode} — {deleteTarget?.name}
+            </p>
+            <p className="text-xs text-slate-500 pt-1">
+              Esta acción no se puede deshacer.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? 'Eliminando…' : 'Eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

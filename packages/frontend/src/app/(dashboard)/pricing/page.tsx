@@ -223,29 +223,7 @@ export default function PricingPage() {
         </div>
       </div>
 
-      {/* ── Sub-modules quick nav ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Link href="/pricing/performance-rates" className="group flex items-center gap-4 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-600 rounded-2xl p-5 transition-all shadow-sm hover:shadow-md">
-          <div className="h-11 w-11 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center border border-amber-100 dark:border-amber-800 group-hover:bg-amber-100 transition-colors">
-            <Gauge className="h-5 w-5 text-amber-700 dark:text-amber-400" />
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-sm">Tasas de Rendimiento</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Productividad estándar por especialidad</p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-amber-600 transition-colors" />
-        </Link>
-        <Link href="/pricing/risk-variables" className="group flex items-center gap-4 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-600 rounded-2xl p-5 transition-all shadow-sm hover:shadow-md">
-          <div className="h-11 w-11 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center border border-red-100 dark:border-red-800 group-hover:bg-red-100 transition-colors">
-            <ShieldAlert className="h-5 w-5 text-red-600 dark:text-red-400" />
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-sm">Variables de Riesgo</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Factores de incremento por condición de obra</p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-red-500 transition-colors" />
-        </Link>
-      </div>
+
 
       {/* ── Command Center Filters ── */}
       <Card className="overflow-hidden border-white/10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-3xl shadow-xl rounded-3xl">
@@ -459,8 +437,8 @@ export default function PricingPage() {
 
       {/* ── Supply Create/Edit Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl font-jakarta">
-          <div className="bg-slate-900 px-8 py-10 text-white relative">
+        <DialogContent className="max-w-2xl rounded-3xl p-0 border-none shadow-2xl font-jakarta flex flex-col max-h-[90vh]">
+          <div className="bg-slate-900 px-8 py-10 text-white relative rounded-t-3xl shrink-0">
             <div className="absolute top-0 right-0 w-32 h-full bg-gradient-to-l from-blue-500/20 to-transparent" />
             <DialogHeader className="relative">
               <DialogTitle className="text-2xl font-black flex items-center gap-3">
@@ -475,7 +453,7 @@ export default function PricingPage() {
             </DialogHeader>
           </div>
 
-          <div className="p-8 space-y-6 bg-white dark:bg-slate-950">
+          <div className="p-8 space-y-6 bg-white dark:bg-slate-950 overflow-y-auto flex-1">
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Código Maestro *</Label>
@@ -587,7 +565,7 @@ export default function PricingPage() {
             )}
           </div>
 
-          <DialogFooter className="p-8 bg-slate-50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 gap-3">
+          <DialogFooter className="p-8 bg-slate-50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 gap-3 shrink-0 rounded-b-3xl">
             <Button variant="ghost" className="rounded-2xl font-bold text-slate-500 h-12 px-6" onClick={() => setDialogOpen(false)}>CANCELAR</Button>
             <Button 
               onClick={handleSave} 

@@ -1,8 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Use static export only when explicitly requested (e.g. Firebase Hosting via CI)
-  // Vercel handles Next.js natively — no static export needed there.
-  ...(process.env.NEXT_STATIC_EXPORT === 'true' ? { output: 'export' } : {}),
+  // Only use static export for production builds (Firebase Hosting)
+  ...(process.env.NODE_ENV === 'production' ? { output: 'export' } : {}),
   transpilePackages: ['@fym/shared'],
   images: {
     unoptimized: true,

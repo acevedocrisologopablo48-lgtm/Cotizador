@@ -534,17 +534,6 @@ export default function ClientDetailPage() {
 
               {/* Action Sidebar */}
               <div className="space-y-4">
-                <a 
-                  href={`https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp?ruc=${company.ruc}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full"
-                >
-                  <Button variant="ghost" className="w-full h-16 rounded-[2rem] bg-blue-500/5 border border-blue-500/10 hover:bg-blue-500/10 text-blue-500 font-black uppercase tracking-widest text-[10px] transition-all group">
-                    <ExternalLink className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform" />
-                    Ficha RUC SUNAT
-                  </Button>
-                </a>
               </div>
             </div>
           </div>

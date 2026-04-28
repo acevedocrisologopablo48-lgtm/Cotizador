@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TableSkeleton, TableError } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
-import { Plus, Search, ExternalLink, X, FileText, CheckCircle2, Loader2, Filter, ArrowRight } from 'lucide-react';
+import { Plus, Search, ExternalLink, X, FileText, CheckCircle2, Loader2, Filter, ArrowRight, Trash2, AlertTriangle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Borrador', color: 'slate' },
@@ -48,6 +49,8 @@ function QuotationsPageInner() {
   const [dateTo, setDateTo] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
   const [quotationTypes, setQuotationTypes] = useState<string[]>([]);
   const [contactFilter, setContactFilter] = useState(() => searchParams.get('contactId') || '');
@@ -106,6 +109,21 @@ function QuotationsPageInner() {
   }, [token, search, statusFilter, tipoFilter, companyFilter, contactFilter, dateFrom, dateTo, addToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget || !token) return;
+    setIsDeleting(true);
+    try {
+      await api.delete(`/quotations/${deleteTarget.id}`, token);
+      addToast('Cotización eliminada correctamente', 'success');
+      setDeleteTarget(null);
+      load(meta.page);
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-8 font-jakarta animate-in fade-in slide-in-from-bottom-3 duration-500">
@@ -364,16 +382,24 @@ function QuotationsPageInner() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right pr-10">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="font-mono text-lg font-black text-slate-900 dark:text-white tracking-tighter group-hover:text-primary transition-colors">
-                              {fmt(q.total || 0, q.currency)}
-                            </span>
-                            <div className="flex items-center gap-2 text-primary opacity-0 group-hover:opacity-100 group-hover:translate-x-[-4px] transition-all duration-500">
-                              <span className="text-[9px] font-black uppercase tracking-widest">Abrir Expediente</span>
-                              <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
-                                <ExternalLink className="h-3 w-3" />
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="font-mono text-lg font-black text-slate-900 dark:text-white tracking-tighter group-hover:text-primary transition-colors">
+                                {fmt(q.total || 0, q.currency)}
+                              </span>
+                              <div className="flex items-center gap-2 text-primary opacity-0 group-hover:opacity-100 group-hover:translate-x-[-4px] transition-all duration-500">
+                                <span className="text-[9px] font-black uppercase tracking-widest">Abrir Expediente</span>
+                                <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+                                  <ExternalLink className="h-3 w-3" />
+                                </div>
                               </div>
                             </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(q); }}
+                              className="opacity-0 group-hover:opacity-100 transition-all ml-2 h-9 w-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-500/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -425,6 +451,37 @@ function QuotationsPageInner() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-500">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar Cotización
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-1">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              ¿Estás seguro de que deseas eliminar esta cotización?
+            </p>
+            <p className="font-bold text-slate-900 dark:text-slate-100">
+              {deleteTarget?.quotationNumber} — {deleteTarget?.title}
+            </p>
+            <p className="text-xs text-slate-500 pt-1">
+              Esta acción no se puede deshacer.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? 'Eliminando…' : 'Eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

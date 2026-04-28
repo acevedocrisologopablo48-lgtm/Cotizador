@@ -28,6 +28,9 @@ export class ProjectsService {
     const { docs, total } = await this.firebase.paginatedQuery(query, page, pageSize);
     let data = this.firebase.docsToArray(docs);
 
+    // Exclude soft-deleted records
+    data = data.filter((item: any) => !item.deletedAt);
+
     for (const item of data) {
       if (item.companyId) {
         const c = await this.firebase.db.collection('companies').doc(item.companyId).get();
@@ -140,6 +143,13 @@ export class ProjectsService {
     if (status === ProjectStatus.COMPLETED) data.actualEndDate = new Date();
     await this.col.doc(id).update(data);
     return { id, ...doc.data(), ...data };
+  }
+
+  async delete(id: string) {
+    const doc = await this.col.doc(id).get();
+    if (!doc.exists) throw new NotFoundException('Proyecto no encontrado');
+    await this.col.doc(id).update({ deletedAt: new Date(), updatedAt: new Date() });
+    return { id };
   }
 
   async getSummary(id: string) {

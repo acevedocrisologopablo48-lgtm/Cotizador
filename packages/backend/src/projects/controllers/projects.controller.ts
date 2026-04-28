@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { FirebaseAuthGuard, RolesGuard } from '../../common/guards';
 import { Roles } from '../../common/decorators';
 import { ProjectsService } from '../services/projects.service';
@@ -52,5 +52,11 @@ export class ProjectsController {
   @Roles('ADMIN', 'MANAGER')
   updateStatus(@Param('id') id: string, @Body('status') status: string) {
     return this.projectsService.updateStatus(id, status);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN', 'MANAGER')
+  delete(@Param('id') id: string) {
+    return this.projectsService.delete(id);
   }
 }

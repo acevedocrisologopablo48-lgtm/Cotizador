@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { FirebaseAuthGuard, RolesGuard } from '../../common/guards';
 import { Roles } from '../../common/decorators';
 import { CurrentUser } from '../../common/decorators';
@@ -75,5 +75,11 @@ export class QuotationsController {
   @Roles('ADMIN', 'MANAGER', 'ENGINEER')
   duplicate(@Param('id') id: string, @CurrentUser() user: any) {
     return this.quotationsService.duplicate(id, user.id);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN', 'MANAGER')
+  delete(@Param('id') id: string) {
+    return this.quotationsService.delete(id);
   }
 }
