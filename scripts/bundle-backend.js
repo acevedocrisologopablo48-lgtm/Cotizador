@@ -14,13 +14,21 @@ async function bundle() {
         'firebase-functions',
         '@nestjs/microservices',
         '@nestjs/websockets',
+        '@nestjs/platform-express',
         'cache-manager',
         'class-transformer',
         'class-validator',
+        'class-validator/cjs',
+        'class-transformer/cjs',
         'swagger-ui-dist',
+        'exceljs',
+        'express',
+        'rxjs',
       ],
-      sourcemap: true,
+      sourcemap: false,
       minify: false,
+      keepNames: true,
+      tsconfig: path.join(__dirname, '..', 'packages/backend/tsconfig.json'),
     });
     console.log('✅ Bundle complete');
   } catch (err) {
