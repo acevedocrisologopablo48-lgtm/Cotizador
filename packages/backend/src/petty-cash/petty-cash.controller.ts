@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PettyCashService } from './petty-cash.service';
 import { FirebaseAuthGuard, RolesGuard } from '../common/guards';
@@ -35,12 +35,29 @@ export class PettyCashController {
     return { data };
   }
 
+  @Patch(':id')
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Actualizar caja chica' })
+  async update(@Param('id') id: string, @Body() body: { name?: string }) {
+    const data = await this.service.update(id, body);
+    return { data };
+  }
+
   @Patch(':id/close')
   @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Cerrar caja chica' })
   async close(@Param('id') id: string) {
     const data = await this.service.close(id);
     return { data };
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Eliminar caja chica (solo ADMIN)' })
+  async remove(@Param('id') id: string) {
+    await this.service.delete(id);
+    return { message: 'Caja chica eliminada correctamente' };
   }
 
   @Get(':id/transactions')

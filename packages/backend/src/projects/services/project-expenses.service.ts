@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 
 @Injectable()
@@ -7,6 +7,13 @@ export class ProjectExpensesService {
 
   private col(projectId: string) {
     return this.firebase.db.collection('projects').doc(projectId).collection('expenses');
+  }
+
+  private async assertProject(projectId: string) {
+    const doc = await this.firebase.db.collection('projects').doc(projectId).get();
+    if (!doc.exists || doc.data()?.deletedAt) {
+      throw new NotFoundException('Proyecto no encontrado');
+    }
   }
 
   async findByProject(projectId: string, params: { page?: number; pageSize?: number; category?: string }) {
@@ -37,6 +44,7 @@ export class ProjectExpensesService {
   }
 
   async create(projectId: string, data: any, userId: string) {
+    await this.assertProject(projectId);
     const id = this.firebase.generateId();
     const docData = { ...data, registeredBy: userId, paymentStatus: 'PENDING', createdAt: new Date() };
     await this.col(projectId).doc(id).set(docData);

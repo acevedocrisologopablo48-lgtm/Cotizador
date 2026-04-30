@@ -1,4 +1,4 @@
-import { Controller, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Post, Put, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { FirebaseAuthGuard, RolesGuard } from '../../common/guards';
 import { Roles } from '../../common/decorators';
 import { QuotationSectionsService } from '../services/quotation-sections.service';
@@ -19,6 +19,16 @@ export class QuotationSectionsController {
   update(
     @Param('quotationId') quotationId: string,
     @Param('id') id: string, 
+    @Body() dto: any
+  ) {
+    return this.sectionsService.update(quotationId, id, dto);
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN', 'MANAGER', 'ENGINEER')
+  patch(
+    @Param('quotationId') quotationId: string,
+    @Param('id') id: string,
     @Body() dto: any
   ) {
     return this.sectionsService.update(quotationId, id, dto);

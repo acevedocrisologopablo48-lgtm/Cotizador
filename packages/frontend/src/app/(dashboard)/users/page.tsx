@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UserRole } from '@fym/shared';
 import {
   Shield, Plus, UserX, Pencil, Search, Users,
-  Mail, Phone, Calendar, CheckCircle2, XCircle, Loader2,
+  Mail, Phone, Calendar, CheckCircle2, XCircle, Loader2, Trash2, AlertTriangle,
 } from 'lucide-react';
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -69,6 +69,10 @@ export default function UsersPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editRole, setEditRole] = useState('');
+
+  const [deleteUserOpen, setDeleteUserOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
 
   const isAdmin = currentUser?.role === UserRole.ADMIN;
 
@@ -176,6 +180,22 @@ export default function UsersPage() {
       load();
     } catch (e: any) {
       addToast(e.message || 'Error al cambiar estado', 'error');
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    setDeletingUser(true);
+    try {
+      await api.delete(`/auth/users/${userToDelete.id}`, token!);
+      addToast('Usuario eliminado correctamente', 'success');
+      setDeleteUserOpen(false);
+      setUserToDelete(null);
+      load();
+    } catch (e: any) {
+      addToast(e.message || 'Error al eliminar usuario', 'error');
+    } finally {
+      setDeletingUser(false);
     }
   };
 
@@ -322,12 +342,21 @@ export default function UsersPage() {
                           </Button>
                           <Button
                             size="sm" variant="ghost"
-                            className={`h-8 w-8 p-0 ${u.isActive ? 'text-red-500 hover:bg-red-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
+                            className={`h-8 w-8 p-0 ${u.isActive ? 'text-amber-500 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
                             onClick={() => handleToggleActive(u)}
                             disabled={isSelf}
                             title={u.isActive ? 'Desactivar' : 'Reactivar'}
                           >
                             <UserX className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost"
+                            className="h-8 w-8 p-0 text-red-500 hover:bg-red-50"
+                            onClick={() => { setUserToDelete(u); setDeleteUserOpen(true); }}
+                            disabled={isSelf}
+                            title="Eliminar usuario"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </TableCell>
@@ -448,6 +477,35 @@ export default function UsersPage() {
             <Button onClick={handleEditRole} disabled={saving} className="rounded-xl">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={deleteUserOpen} onOpenChange={(open) => { if (!deletingUser) { setDeleteUserOpen(open); if (!open) setUserToDelete(null); } }}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-red-600">
+              <AlertTriangle className="h-4 w-4" /> Eliminar Usuario
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Esta acción es <span className="font-bold text-foreground">permanente</span> y no se puede deshacer.
+            </p>
+            {userToDelete && (
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700">
+                <p className="font-semibold text-sm">{userToDelete.fullName}</p>
+                <p className="text-xs text-muted-foreground font-mono">{userToDelete.email}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteUserOpen(false); setUserToDelete(null); }} disabled={deletingUser} className="rounded-xl">Cancelar</Button>
+            <Button onClick={handleDeleteUser} disabled={deletingUser} className="rounded-xl bg-red-600 hover:bg-red-700 text-white">
+              {deletingUser ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Sí, eliminar
             </Button>
           </DialogFooter>
         </DialogContent>

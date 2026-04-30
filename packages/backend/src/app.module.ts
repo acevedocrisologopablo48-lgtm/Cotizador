@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { FirebaseModule } from './common/firebase/firebase.module';
+import { HealthModule } from './common/health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { PricingModule } from './pricing/pricing.module';
@@ -15,10 +18,11 @@ import { HrModule } from './hr/hr.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../../.env',
+      envFilePath: ['.env', '../../.env'],
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     FirebaseModule,
+    HealthModule,
     AuthModule,
     ClientsModule,
     PricingModule,
@@ -28,6 +32,15 @@ import { HrModule } from './hr/hr.module';
     AppConfigModule,
     HrModule,
   ],
-  providers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
+    },
+  ],
 })
 export class AppModule {}

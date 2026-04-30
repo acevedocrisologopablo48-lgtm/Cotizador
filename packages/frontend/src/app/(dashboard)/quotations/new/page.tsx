@@ -12,7 +12,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
-import { ArrowLeft, Settings2, Plus, Trash2, GripVertical, Users, Briefcase, Calendar, Info, Calculator, DollarSign, FileText } from 'lucide-react';
+import { ArrowLeft, Settings2, Plus, Trash2, GripVertical, Users, Briefcase, Calendar, Info, Calculator, DollarSign, FileText, LayoutGrid } from 'lucide-react';
+import {
+  DEFAULT_PROJECT_TECHNICAL_SECTIONS,
+  QuotationDocumentMode,
+  normalizeQuotationDocumentMode,
+  type TechnicalSection,
+} from '@fym/shared';
 
 export default function NewQuotationPage() {
   const { token, user } = useAuth();
@@ -29,6 +35,24 @@ export default function NewQuotationPage() {
     validityDays: '15', currency: 'PEN', igvPercentage: '18',
     generalExpensesPercentage: '10', profitMarginPercentage: '15',
     introductionText: '', termsAndConditions: '', deliveryTimeDays: '', warrantyText: '',
+    documentMode: 'SIMPLE' as 'SIMPLE' | 'PROJECT',
+    referenceSubject: '',
+    issuePlace: '',
+    issueDate: '',
+    revisionLabel: '',
+    showTaxBreakdown: true,
+    pricesIncludeIgv: false,
+    commercialTerms: {
+      paymentMethod: '',
+      paymentTerms: '',
+      executionLocation: '',
+      executionTime: '',
+      additionalNotes: '',
+    },
+    technicalSections: [] as TechnicalSection[],
+    coverUrl1: '',
+    coverUrl2: '',
+    coverUrl3: '',
   });
 
   // Manage types dialog
@@ -48,6 +72,7 @@ export default function NewQuotationPage() {
         validityDays: String(r.defaultValidityDays ?? 15),
         currency: r.defaultCurrency || 'PEN',
         igvPercentage: String(r.defaultIgvPercentage ?? 18),
+        issueDate: f.issueDate || new Date().toISOString().slice(0, 10),
       }));
     }).catch(() => {});
   }, [token]);
@@ -58,6 +83,14 @@ export default function NewQuotationPage() {
         .then(r => {
           setContacts(r.data?.contacts || []);
           setAgreements(r.data?.agreements || []);
+          // Auto-suggest title with client name + month/year if still empty
+          const tradeName: string = r.data?.tradeName || '';
+          if (tradeName) {
+            const now = new Date();
+            const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            const suggestion = `${tradeName} - ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+            setForm(f => ({ ...f, title: f.title.trim() === '' ? suggestion : f.title }));
+          }
         })
         .catch(() => { setContacts([]); setAgreements([]); });
     } else {
@@ -90,6 +123,32 @@ export default function NewQuotationPage() {
       if (form.termsAndConditions) body.termsAndConditions = form.termsAndConditions;
       if (form.deliveryTimeDays) body.deliveryTimeDays = parseInt(form.deliveryTimeDays);
       if (form.warrantyText) body.warrantyText = form.warrantyText;
+
+      const mode =
+        normalizeQuotationDocumentMode(form.documentMode) === QuotationDocumentMode.PROJECT
+          ? QuotationDocumentMode.PROJECT
+          : QuotationDocumentMode.SIMPLE;
+      body.documentMode = mode;
+      body.referenceSubject = form.referenceSubject.trim();
+      body.issuePlace = form.issuePlace.trim();
+      body.issueDate = form.issueDate.trim() || null;
+      body.revisionLabel = form.revisionLabel.trim();
+      body.showTaxBreakdown = form.showTaxBreakdown;
+      body.pricesIncludeIgv = form.pricesIncludeIgv;
+      body.commercialTerms = {
+        paymentMethod: form.commercialTerms.paymentMethod.trim() || undefined,
+        paymentTerms: form.commercialTerms.paymentTerms.trim() || undefined,
+        executionLocation: form.commercialTerms.executionLocation.trim() || undefined,
+        executionTime: form.commercialTerms.executionTime.trim() || undefined,
+        additionalNotes: form.commercialTerms.additionalNotes.trim() || undefined,
+      };
+      const ts =
+        mode === QuotationDocumentMode.PROJECT
+          ? (form.technicalSections.length ? form.technicalSections : [...DEFAULT_PROJECT_TECHNICAL_SECTIONS])
+          : [];
+      body.technicalSections = ts;
+      const coverUrls = [form.coverUrl1, form.coverUrl2, form.coverUrl3].map(s => s.trim()).filter(Boolean).slice(0, 5);
+      body.projectCoverImageUrls = coverUrls;
 
       const created = await api.post<any>('/quotations', body, token!);
       addToast('Cotización creada', 'success');
@@ -232,8 +291,11 @@ export default function NewQuotationPage() {
                   className="form-field h-11 font-bold text-slate-700" 
                   value={form.title} 
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))} 
-                  placeholder="Ej: Servicio de mantenimiento preventivo de subestaciones" 
+                  placeholder="Se sugiere automáticamente al elegir cliente" 
                 />
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Al seleccionar un cliente se sugiere automáticamente: <span className="text-indigo-500 font-bold">Cliente - Mes/Año</span>. Puedes editarlo libremente.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -287,9 +349,164 @@ export default function NewQuotationPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Right Column - Parameters & Actions */}
+          <Card className="border-slate-200/60 shadow-sm overflow-hidden rounded-2xl">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4">
+              <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                <div className="p-1.5 bg-sky-100 rounded-lg">
+                  <LayoutGrid className="h-4 w-4 text-sky-600" />
+                </div>
+                Documento PDF (simple / proyecto)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Modo</Label>
+                <Select
+                  value={form.documentMode}
+                  onValueChange={v =>
+                    setForm(f => ({
+                      ...f,
+                      documentMode: v === 'PROJECT' ? 'PROJECT' : 'SIMPLE',
+                      technicalSections:
+                        v === 'PROJECT' && f.technicalSections.length === 0
+                          ? [...DEFAULT_PROJECT_TECHNICAL_SECTIONS]
+                          : v === 'SIMPLE'
+                            ? []
+                            : f.technicalSections,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="form-select border-slate-200 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="SIMPLE" className="rounded-lg">Simple</SelectItem>
+                    <SelectItem value="PROJECT" className="rounded-lg">Proyecto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Referencia</Label>
+                  <Input
+                    className="form-field"
+                    value={form.referenceSubject}
+                    onChange={e => setForm(f => ({ ...f, referenceSubject: e.target.value }))}
+                    placeholder="Asunto en el PDF"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Revisión</Label>
+                  <Input
+                    className="form-field font-mono"
+                    value={form.revisionLabel}
+                    onChange={e => setForm(f => ({ ...f, revisionLabel: e.target.value }))}
+                    placeholder="REV1"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Lugar emisión</Label>
+                  <Input
+                    className="form-field"
+                    value={form.issuePlace}
+                    onChange={e => setForm(f => ({ ...f, issuePlace: e.target.value }))}
+                    placeholder="Lima"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Fecha emisión</Label>
+                  <Input
+                    type="date"
+                    className="form-field font-mono"
+                    value={form.issueDate}
+                    onChange={e => setForm(f => ({ ...f, issueDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs font-medium">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 accent-sky-600"
+                    checked={form.showTaxBreakdown}
+                    onChange={e => setForm(f => ({ ...f, showTaxBreakdown: e.target.checked }))}
+                  />
+                  Desglose IGV
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 accent-sky-600"
+                    checked={form.pricesIncludeIgv}
+                    onChange={e => setForm(f => ({ ...f, pricesIncludeIgv: e.target.checked }))}
+                  />
+                  Precios incluyen IGV
+                </label>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Forma de pago</Label>
+                  <Input
+                    className="form-field"
+                    value={form.commercialTerms.paymentMethod}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, paymentMethod: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Lugar ejecución</Label>
+                  <Input
+                    className="form-field"
+                    value={form.commercialTerms.executionLocation}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, executionLocation: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Plazo / tiempo ejecución</Label>
+                  <Input
+                    className="form-field"
+                    value={form.commercialTerms.executionTime}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, executionTime: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              {form.documentMode === 'PROJECT' && (
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-slate-600">Secciones técnicas</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl text-xs font-bold"
+                      onClick={() =>
+                        setForm(f => ({ ...f, technicalSections: [...DEFAULT_PROJECT_TECHNICAL_SECTIONS] }))
+                      }
+                    >
+                      Plantilla estándar
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">Podrá editar el contenido en el detalle de la cotización.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
         <div className="space-y-8">
           <Card className="border-slate-200/60 shadow-sm overflow-hidden rounded-2xl bg-slate-50/30">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4">

@@ -84,7 +84,7 @@ function SelectContent({ children, className }: { children: React.ReactNode; cla
     <div
       ref={ref}
       className={cn(
-        'absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95',
+        'absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border bg-popover p-1 text-popover-foreground shadow-[0_8px_30px_-8px_rgb(15,23,42,0.15)] animate-in fade-in-0 zoom-in-95',
         className
       )}
     >
@@ -106,8 +106,8 @@ function SelectItem({ value, children, className }: { value: string; children: R
   return (
     <div
       className={cn(
-        'relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground',
-        isSelected && 'bg-accent text-accent-foreground',
+        'relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-secondary hover:text-foreground',
+        isSelected && 'bg-primary/10 text-primary font-medium',
         className
       )}
       onClick={() => {

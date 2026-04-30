@@ -85,20 +85,8 @@ export default function HrTimesheetsPage() {
     setExporting(true);
     try {
       const qs = buildParams();
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-      const res = await fetch(`${API_BASE}/hr/timesheets/export?${qs}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Error al generar el reporte');
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       const label = useRange && dateFrom ? `${dateFrom}_${dateTo}` : monthFilter;
-      a.download = `tareo-${label}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await api.download(`/hr/timesheets/export?${qs}`, `tareo-${label}.xlsx`, token);
       addToast('Reporte descargado', 'success');
     } catch (e: any) {
       addToast(e.message, 'error');

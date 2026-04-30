@@ -116,6 +116,7 @@ export function useToast() {
         variant: type === 'error' ? 'destructive' : type === 'info' ? 'info' : undefined,
       });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ctx.toast]
   );
 

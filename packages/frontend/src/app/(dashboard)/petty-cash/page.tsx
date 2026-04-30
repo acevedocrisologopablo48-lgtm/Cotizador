@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
@@ -12,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Wallet, Plus, Eye, ArrowDownCircle, ArrowUpCircle, Lock } from 'lucide-react';
+import { Wallet, Plus, Eye, ArrowDownCircle, ArrowUpCircle, Lock, Trash2, AlertTriangle, Pencil, Briefcase, ExternalLink } from 'lucide-react';
 
 interface PettyCash {
   id: string;
@@ -75,6 +76,17 @@ export default function PettyCashPage() {
     notes: '',
   });
 
+  // Delete confirm dialog
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [fundToDelete, setFundToDelete] = useState<PettyCash | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Edit dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingFund, setEditingFund] = useState<PettyCash | null>(null);
+  const [editForm, setEditForm] = useState({ name: '' });
+  const [editSaving, setEditSaving] = useState(false);
+
   const loadFunds = useCallback(async () => {
     try {
       const res = await api.get<{ data: PettyCash[] }>('/petty-cash', token!);
@@ -134,6 +146,50 @@ export default function PettyCashPage() {
       setDetailOpen(false);
     } catch (e: any) {
       addToast(e.message, 'error');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!fundToDelete) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/petty-cash/${fundToDelete.id}`, token!);
+      addToast('Caja chica eliminada', 'success');
+      setDeleteOpen(false);
+      setFundToDelete(null);
+      if (selectedFund?.id === fundToDelete.id) setDetailOpen(false);
+      loadFunds();
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const openEdit = (e: React.MouseEvent, fund: PettyCash) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingFund(fund);
+    setEditForm({ name: fund.name });
+    setEditOpen(true);
+  };
+
+  const handleEdit = async () => {
+    if (!editingFund || !editForm.name.trim()) {
+      addToast('El nombre es obligatorio', 'error');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await api.patch(`/petty-cash/${editingFund.id}`, { name: editForm.name.trim() }, token!);
+      addToast('Caja chica actualizada', 'success');
+      setEditOpen(false);
+      setEditingFund(null);
+      loadFunds();
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -229,15 +285,37 @@ export default function PettyCashPage() {
                       </div>
                       <span className="font-bold text-slate-900 dark:text-slate-100 font-jakarta line-clamp-1">{fund.name}</span>
                     </div>
-                    <Badge 
-                      className={`rounded-full font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 border-0 shadow-sm ${
-                        isOpen 
-                        ? 'bg-emerald-500 text-white shadow-emerald-500/20' 
-                        : 'bg-slate-500 text-white'
-                      }`}
-                    >
-                      {statusLabels[fund.status]}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        className={`rounded-full font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 border-0 shadow-sm ${
+                          isOpen 
+                          ? 'bg-emerald-500 text-white shadow-emerald-500/20' 
+                          : 'bg-slate-500 text-white'
+                        }`}
+                      >
+                        {statusLabels[fund.status]}
+                      </Badge>
+                      {(user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'ACCOUNTANT') && (
+                        <button
+                          type="button"
+                          onClick={(e) => openEdit(e, fund)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                          title="Editar caja chica"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {user?.role === 'ADMIN' && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFundToDelete(fund); setDeleteOpen(true); }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                          title="Eliminar caja chica"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
 
@@ -271,6 +349,20 @@ export default function PettyCashPage() {
                       />
                     </div>
                   </div>
+
+                  {fund.project && (
+                    <Link
+                      href={`/projects/detail?id=${fund.project.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors text-[10px] font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300"
+                      title="Ver proyecto vinculado"
+                    >
+                      <Briefcase className="h-3.5 w-3.5" />
+                      <span className="font-mono">{fund.project.projectCode}</span>
+                      <span className="truncate flex-1 normal-case font-medium tracking-normal">{fund.project.name}</span>
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </Link>
+                  )}
 
                   <div className="pt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/50">
                     <div className="flex items-center gap-2">
@@ -379,6 +471,18 @@ export default function PettyCashPage() {
                   <p className="text-slate-400 text-sm mt-1 font-medium flex items-center gap-2">
                     Responsable: <span className="text-white font-bold">{selectedFund.responsibleUser.fullName}</span>
                   </p>
+                  {selectedFund.project && (
+                    <Link
+                      href={`/projects/detail?id=${selectedFund.project.id}`}
+                      className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-[10px] font-bold uppercase tracking-widest text-white border border-white/10 w-fit"
+                      title="Ir al proyecto vinculado"
+                    >
+                      <Briefcase className="h-3.5 w-3.5" />
+                      <span className="font-mono">{selectedFund.project.projectCode}</span>
+                      <span className="truncate normal-case font-medium tracking-normal opacity-90">{selectedFund.project.name}</span>
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </Link>
+                  )}
                 </DialogHeader>
               </div>
 
@@ -559,6 +663,73 @@ export default function PettyCashPage() {
             <Button variant="ghost" onClick={() => setTxnOpen(false)} className="rounded-xl font-bold text-xs uppercase tracking-widest">Cancelar</Button>
             <Button onClick={handleAddTransaction} disabled={saving} className="rounded-xl px-8 shadow-lg shadow-primary/20 font-bold text-xs uppercase tracking-widest">
               {saving ? 'Guardando...' : 'Registrar Movimiento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={(open) => { if (!editSaving) { setEditOpen(open); if (!open) setEditingFund(null); } }}>
+        <DialogContent className="max-w-md p-0 overflow-hidden border-none shadow-2xl rounded-2xl">
+          <div className="bg-slate-900 dark:bg-black p-6 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold font-jakarta flex items-center gap-2">
+                <Pencil className="h-5 w-5" /> Editar Caja Chica
+              </DialogTitle>
+              <p className="text-slate-400 text-xs mt-1 font-medium">Modifica los datos del fondo operativo.</p>
+            </DialogHeader>
+          </div>
+          <div className="p-6 space-y-5 bg-white dark:bg-slate-900">
+            <div className="space-y-2">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Nombre de la Caja</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Ej: Caja Chica - Mantenimiento Planta"
+                className="rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 focus-visible:ring-primary/20"
+              />
+            </div>
+          </div>
+          <DialogFooter className="p-6 pt-2 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={editSaving} className="rounded-xl font-bold text-xs uppercase tracking-widest">Cancelar</Button>
+            <Button onClick={handleEdit} disabled={editSaving} className="rounded-xl px-8 shadow-lg shadow-primary/20 font-bold text-xs uppercase tracking-widest">
+              {editSaving ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={(open) => { if (!deleting) { setDeleteOpen(open); if (!open) setFundToDelete(null); } }}>
+        <DialogContent className="max-w-md p-0 overflow-hidden border-none shadow-2xl rounded-2xl">
+          <div className="bg-rose-600 p-6 text-white">
+            <DialogHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <DialogTitle className="text-xl font-bold font-jakarta">Eliminar Caja Chica</DialogTitle>
+              </div>
+              <p className="text-rose-100 text-xs mt-2 font-medium">Esta acción no se puede deshacer.</p>
+            </DialogHeader>
+          </div>
+          <div className="p-6 bg-white dark:bg-slate-900 space-y-3">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Estás a punto de eliminar permanentemente la caja chica:
+            </p>
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700">
+              <p className="font-bold text-slate-900 dark:text-slate-100 font-jakarta">{fundToDelete?.name}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                {fundToDelete?._count?.transactions} movimiento(s) asociado(s) también serán eliminados.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="p-6 pt-2 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => { setDeleteOpen(false); setFundToDelete(null); }} disabled={deleting} className="rounded-xl font-bold text-xs uppercase tracking-widest">
+              Cancelar
+            </Button>
+            <Button onClick={handleDelete} disabled={deleting} className="rounded-xl px-8 bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-500/20 font-bold text-xs uppercase tracking-widest">
+              {deleting ? 'Eliminando...' : 'Sí, eliminar'}
             </Button>
           </DialogFooter>
         </DialogContent>

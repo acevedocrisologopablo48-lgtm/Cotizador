@@ -9,6 +9,13 @@ export class ProjectEquipmentService {
     return this.firebase.db.collection('projects').doc(projectId).collection('equipmentLogs');
   }
 
+  private async assertProject(projectId: string) {
+    const doc = await this.firebase.db.collection('projects').doc(projectId).get();
+    if (!doc.exists || doc.data()?.deletedAt) {
+      throw new NotFoundException('Proyecto no encontrado');
+    }
+  }
+
   async findByProject(projectId: string, params: { page?: number; pageSize?: number }) {
     const { page: rawPage, pageSize: rawPageSize } = params;
     const page = Number(rawPage) || 1;
@@ -22,6 +29,7 @@ export class ProjectEquipmentService {
   }
 
   async create(projectId: string, data: any, userId: string) {
+    await this.assertProject(projectId);
     const id = this.firebase.generateId();
     const docData = { ...data, registeredBy: userId, createdAt: new Date() };
     await this.col(projectId).doc(id).set(docData);

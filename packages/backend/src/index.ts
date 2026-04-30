@@ -1,12 +1,34 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ExpressAdapter } from '@nestjs/platform-express';
+import { onRequest } from 'firebase-functions/v2/https';
+import express from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import express from 'express';
-import * as functions from 'firebase-functions';
 
+const logger = new Logger('Functions');
 const server = express();
+
+/**
+ * Construye la lista de orígenes permitidos a partir de variables de entorno.
+ * Acepta un patrón fallback para previews de Vercel (`fym-cotizaciones-*.vercel.app`).
+ */
+function buildAllowedOrigins(): Array<string | RegExp> {
+  const env = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const baseline: Array<string | RegExp> = [
+    'http://localhost:3000',
+    'https://cotiza-luis.web.app',
+    'https://cotiza-luis.firebaseapp.com',
+    'https://fym-cotizaciones.vercel.app',
+    /^https:\/\/fym-cotizaciones-.*\.vercel\.app$/,
+  ];
+
+  return Array.from(new Set([...baseline, ...env]));
+}
 
 export const createNestServer = async (expressInstance: express.Express) => {
   const app = await NestFactory.create(
@@ -17,7 +39,7 @@ export const createNestServer = async (expressInstance: express.Express) => {
   app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-    origin: true, // For production, you might want to restrict this
+    origin: buildAllowedOrigins(),
     credentials: true,
   });
 
@@ -35,12 +57,12 @@ export const createNestServer = async (expressInstance: express.Express) => {
 };
 
 createNestServer(server)
-  .then(() => console.log('Nest Readiness Complete'))
-  .catch((err) => console.error('Nest Init Error', err));
+  .then(() => logger.log('Nest readiness complete'))
+  .catch((err) => logger.error('Nest init error', err instanceof Error ? err.stack : String(err)));
 
-import { onRequest } from 'firebase-functions/v2/https';
-
-// Export the cloud function with v2
+// Export the cloud function with v2.
+// `cors: true` mantiene compat con preflights manejados por Express; el ACL real
+// vive en `enableCors(buildAllowedOrigins())`, que Nest aplica al request.
 export const api = onRequest({
   memory: '512MiB',
   timeoutSeconds: 60,

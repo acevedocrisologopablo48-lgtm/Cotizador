@@ -15,15 +15,115 @@ import { useToast } from '@/components/ui/toast';
 import { Plus, Search, ExternalLink, X, FileText, CheckCircle2, Loader2, Filter, ArrowRight, Trash2, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+type ToneKey = 'primary' | 'slate' | 'amber' | 'sky' | 'indigo' | 'emerald' | 'rose';
+
+const STATUS_LABELS: Record<string, { label: string; color: ToneKey }> = {
   DRAFT: { label: 'Borrador', color: 'slate' },
   REVIEW: { label: 'En Revisión', color: 'amber' },
-  APPROVED: { label: 'Aprobada', color: 'sky' },
+  APPROVED: { label: 'Aceptada', color: 'sky' },
   SENT: { label: 'Enviada', color: 'indigo' },
-  ACCEPTED: { label: 'Aceptada', color: 'emerald' },
+  FOLLOW_UP: { label: 'Seguimiento', color: 'indigo' },
+  STAND_BY: { label: 'Stand By', color: 'amber' },
+  INVOICED: { label: 'Facturada', color: 'emerald' },
   REJECTED: { label: 'Rechazada', color: 'rose' },
   EXPIRED: { label: 'Expirada', color: 'rose' },
-  CANCELLED: { label: 'Cancelada', color: 'rose' },
+};
+
+const STATUS_TONE_CLASSES: Record<ToneKey, { wrapper: string; pingBg: string; dotBg: string; text: string }> = {
+  primary: {
+    wrapper: 'bg-primary/10 border border-primary/25 group-hover:border-primary/50',
+    pingBg: 'bg-primary/70',
+    dotBg: 'bg-primary',
+    text: 'text-primary',
+  },
+  slate: {
+    wrapper: 'bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 group-hover:border-slate-400',
+    pingBg: 'bg-slate-400',
+    dotBg: 'bg-slate-500',
+    text: 'text-slate-600 dark:text-slate-300',
+  },
+  amber: {
+    wrapper: 'bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 group-hover:border-amber-400',
+    pingBg: 'bg-amber-400',
+    dotBg: 'bg-amber-500',
+    text: 'text-amber-700 dark:text-amber-400',
+  },
+  sky: {
+    wrapper: 'bg-sky-50 dark:bg-sky-900/30 border border-sky-300 dark:border-sky-700 group-hover:border-sky-400',
+    pingBg: 'bg-sky-400',
+    dotBg: 'bg-sky-500',
+    text: 'text-sky-700 dark:text-sky-400',
+  },
+  indigo: {
+    wrapper: 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-300 dark:border-indigo-700 group-hover:border-indigo-400',
+    pingBg: 'bg-indigo-400',
+    dotBg: 'bg-indigo-500',
+    text: 'text-indigo-700 dark:text-indigo-400',
+  },
+  emerald: {
+    wrapper: 'bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 group-hover:border-emerald-400',
+    pingBg: 'bg-emerald-400',
+    dotBg: 'bg-emerald-500',
+    text: 'text-emerald-700 dark:text-emerald-400',
+  },
+  rose: {
+    wrapper: 'bg-rose-50 dark:bg-rose-900/30 border border-rose-300 dark:border-rose-700 group-hover:border-rose-400',
+    pingBg: 'bg-rose-400',
+    dotBg: 'bg-rose-500',
+    text: 'text-rose-700 dark:text-rose-400',
+  },
+};
+
+const STAT_TONE_CLASSES: Record<ToneKey, { glow: string; iconWrap: string; iconText: string; suffixText: string; bar: string }> = {
+  primary: {
+    glow: 'from-primary/20 to-transparent',
+    iconWrap: 'bg-primary/10 border border-primary/20',
+    iconText: 'text-primary',
+    suffixText: 'text-primary/70',
+    bar: 'bg-primary',
+  },
+  slate: {
+    glow: 'from-slate-500/20 to-transparent',
+    iconWrap: 'bg-slate-500/10 border border-slate-500/20',
+    iconText: 'text-slate-500',
+    suffixText: 'text-slate-500/70',
+    bar: 'bg-slate-500',
+  },
+  amber: {
+    glow: 'from-amber-500/20 to-transparent',
+    iconWrap: 'bg-amber-500/10 border border-amber-500/20',
+    iconText: 'text-amber-500',
+    suffixText: 'text-amber-500/70',
+    bar: 'bg-amber-500',
+  },
+  sky: {
+    glow: 'from-sky-500/20 to-transparent',
+    iconWrap: 'bg-sky-500/10 border border-sky-500/20',
+    iconText: 'text-sky-500',
+    suffixText: 'text-sky-500/70',
+    bar: 'bg-sky-500',
+  },
+  indigo: {
+    glow: 'from-indigo-500/20 to-transparent',
+    iconWrap: 'bg-indigo-500/10 border border-indigo-500/20',
+    iconText: 'text-indigo-500',
+    suffixText: 'text-indigo-500/70',
+    bar: 'bg-indigo-500',
+  },
+  emerald: {
+    glow: 'from-emerald-500/20 to-transparent',
+    iconWrap: 'bg-emerald-500/10 border border-emerald-500/20',
+    iconText: 'text-emerald-500',
+    suffixText: 'text-emerald-500/70',
+    bar: 'bg-emerald-500',
+  },
+  rose: {
+    glow: 'from-rose-500/20 to-transparent',
+    iconWrap: 'bg-rose-500/10 border border-rose-500/20',
+    iconText: 'text-rose-500',
+    suffixText: 'text-rose-500/70',
+    bar: 'bg-rose-500',
+  },
 };
 
 export default function QuotationsPage() {
@@ -42,8 +142,9 @@ function QuotationsPageInner() {
   const [quotations, setQuotations] = useState<any[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [tipoFilter, setTipoFilter] = useState('');
+  // Soporta deep-linking desde Dashboard / módulos relacionados (?status=DRAFT, etc.)
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
+  const [tipoFilter, setTipoFilter] = useState(() => searchParams.get('tipo') || '');
   const [companyFilter, setCompanyFilter] = useState(() => searchParams.get('companyId') || '');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -167,35 +268,38 @@ function QuotationsPageInner() {
 
       {/* Glassmorphic Stats Grid */}
       <div className="grid gap-6 md:grid-cols-4">
-        {[
-          { label: 'Proyectos Cotizados', value: meta.total, icon: FileText, color: 'primary', suffix: 'Expedientes' },
-          { label: 'Auditoría Pendiente', value: quotations.filter(q => q.status === 'REVIEW').length, icon: Loader2, color: 'amber', suffix: 'Revisiones' },
-          { label: 'Propuestas Ganadas', value: quotations.filter(q => q.status === 'APPROVED' || q.status === 'ACCEPTED').length, icon: CheckCircle2, color: 'emerald', suffix: 'Aprobados' },
-          { label: 'Borradores Locales', value: quotations.filter(q => q.status === 'DRAFT').length, icon: Search, color: 'slate', suffix: 'Ediciones' },
-        ].map((stat, i) => (
-          <div key={i} className="group relative">
-            <div className={`absolute -inset-0.5 bg-gradient-to-br from-${stat.color}-500/20 to-transparent rounded-3xl blur opacity-0 group-hover:opacity-100 transition duration-500`}></div>
-            <Card className="relative border-white/10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-2xl rounded-3xl transition-all duration-500 group-hover:translate-y-[-4px] overflow-hidden">
-              <CardContent className="p-8">
-                <div className="flex items-start justify-between">
-                  <div className={`p-4 rounded-2xl bg-${stat.color}-500/10 text-${stat.color}-500 border border-${stat.color}-500/20 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
-                    <stat.icon className={`h-6 w-6 ${stat.color === 'amber' ? 'animate-spin-slow' : ''}`} />
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 group-hover:text-primary transition-colors">{stat.label}</p>
-                    <div className="flex items-baseline justify-end gap-2 mt-2">
-                      <p className="text-4xl font-black text-slate-900 dark:text-white font-mono tracking-tighter">{stat.value}</p>
+        {([
+          { label: 'Proyectos Cotizados', value: meta.total, icon: FileText, color: 'primary' as ToneKey, suffix: 'Expedientes' },
+          { label: 'Auditoría Pendiente', value: quotations.filter(q => q.status === 'REVIEW').length, icon: Loader2, color: 'amber' as ToneKey, suffix: 'Revisiones' },
+          { label: 'Propuestas Ganadas', value: quotations.filter(q => q.status === 'APPROVED').length, icon: CheckCircle2, color: 'emerald' as ToneKey, suffix: 'Aprobados' },
+          { label: 'Borradores Locales', value: quotations.filter(q => q.status === 'DRAFT').length, icon: Search, color: 'slate' as ToneKey, suffix: 'Ediciones' },
+        ]).map((stat, i) => {
+          const tone = STAT_TONE_CLASSES[stat.color];
+          return (
+            <div key={i} className="group relative">
+              <div className={`absolute -inset-0.5 bg-gradient-to-br ${tone.glow} rounded-3xl blur opacity-0 group-hover:opacity-100 transition duration-500`}></div>
+              <Card className="relative border-white/10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-2xl rounded-3xl transition-all duration-500 group-hover:translate-y-[-4px] overflow-hidden">
+                <CardContent className="p-8">
+                  <div className="flex items-start justify-between">
+                    <div className={`p-4 rounded-2xl ${tone.iconWrap} ${tone.iconText} shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+                      <stat.icon className={`h-6 w-6 ${stat.color === 'amber' ? 'animate-spin-slow' : ''}`} />
                     </div>
-                    <p className={`text-[9px] font-bold uppercase tracking-widest text-${stat.color}-500/70 mt-1`}>{stat.suffix}</p>
+                    <div className="text-right">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 group-hover:text-primary transition-colors">{stat.label}</p>
+                      <div className="flex items-baseline justify-end gap-2 mt-2">
+                        <p className="text-4xl font-black text-slate-900 dark:text-white font-mono tracking-tighter">{stat.value}</p>
+                      </div>
+                      <p className={`text-[9px] font-bold uppercase tracking-widest ${tone.suffixText} mt-1`}>{stat.suffix}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-6 h-1 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className={`h-full bg-${stat.color}-500 w-1/3 rounded-full group-hover:w-full transition-all duration-1000`}></div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        ))}
+                  <div className="mt-6 h-1 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className={`h-full ${tone.bar} w-1/3 rounded-full group-hover:w-full transition-all duration-1000`}></div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })}
       </div>
 
       {/* Advanced Command Filter Bar */}
@@ -292,13 +396,13 @@ function QuotationsPageInner() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="hover:bg-transparent border-b border-white/10 bg-slate-950/40">
-                  <TableHead className="w-[180px] font-black text-[10px] uppercase tracking-[0.3em] text-slate-400 py-8 px-10">Folio Técnico</TableHead>
-                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-400 py-8">Descripción del Proyecto</TableHead>
-                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-400 py-8">Entidad / Cliente</TableHead>
-                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-400 py-8">Configuración</TableHead>
-                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-400 py-8">Estado Actual</TableHead>
-                  <TableHead className="text-right font-black text-[10px] uppercase tracking-[0.3em] text-slate-400 py-8 pr-10">Valuación Total</TableHead>
+                <TableRow className="hover:bg-transparent border-b border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/80">
+                  <TableHead className="w-[180px] font-black text-[10px] uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 py-8 px-10">Folio Técnico</TableHead>
+                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 py-8">Descripción del Proyecto</TableHead>
+                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 py-8">Entidad / Cliente</TableHead>
+                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 py-8">Configuración</TableHead>
+                  <TableHead className="font-black text-[10px] uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 py-8">Estado Actual</TableHead>
+                  <TableHead className="text-right font-black text-[10px] uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 py-8 pr-10">Valuación Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -322,8 +426,8 @@ function QuotationsPageInner() {
                   </TableRow>
                 ) : (
                   quotations.map((q, idx) => {
-                    const status = STATUS_LABELS[q.status] || { label: q.status, color: 'slate' };
-                    const color = status.color;
+                    const status = STATUS_LABELS[q.status] || { label: q.status, color: 'slate' as ToneKey };
+                    const tone = STATUS_TONE_CLASSES[status.color] || STATUS_TONE_CLASSES.slate;
 
                     return (
                       <TableRow 
@@ -366,19 +470,19 @@ function QuotationsPageInner() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-2">
-                            <Badge variant="outline" className="w-fit font-black text-[9px] uppercase tracking-widest px-3 py-1 bg-slate-950/30 border-white/5 text-slate-400 group-hover:border-primary/30 group-hover:text-primary transition-all">
+                            <Badge variant="outline" className="w-fit font-black text-[9px] uppercase tracking-widest px-3 py-1 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 group-hover:border-primary/50 group-hover:text-primary transition-all">
                               {q.tipo || 'General'}
                             </Badge>
-                            <span className="text-[9px] font-black text-slate-500/50 uppercase tracking-widest ml-1">{q.currency} / {q.igvPercentage}% IGV</span>
+                            <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1">{q.currency} / {q.igvPercentage}% IGV</span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className={`inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-${color}-500/5 border border-${color}-500/10 group-hover:border-${color}-500/30 transition-all duration-500`}>
+                          <div className={`inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl ${tone.wrapper} transition-all duration-500`}>
                             <div className={`relative flex h-2 w-2`}>
-                              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full bg-${color}-400 opacity-75`}></span>
-                              <span className={`relative inline-flex rounded-full h-2 w-2 bg-${color}-500`}></span>
+                              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${tone.pingBg} opacity-75`}></span>
+                              <span className={`relative inline-flex rounded-full h-2 w-2 ${tone.dotBg}`}></span>
                             </div>
-                            <span className={`text-[10px] font-black uppercase tracking-[0.2em] text-${color}-500`}>{status.label}</span>
+                            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${tone.text}`}>{status.label}</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right pr-10">

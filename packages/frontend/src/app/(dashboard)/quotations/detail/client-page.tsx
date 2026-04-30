@@ -20,11 +20,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { 
   ArrowLeft, Plus, Trash2, Pencil, Calculator, FileText, 
   Printer, DollarSign, Info, Package, FolderKanban, 
-  Upload, FileSpreadsheet, Download, X as XIcon,
+  Upload, FileSpreadsheet, Download, FileDown, X as XIcon,
   ChevronRight, Calendar, User, Building2, Layers,
   ExternalLink, Copy, CheckCircle2, AlertCircle, Clock,
-  FileCheck
+  FileCheck, RefreshCw, LayoutGrid, Sheet
 } from 'lucide-react';
+import { SpreadsheetEditor } from './spreadsheet';
+import { QuotationPrintDocument } from './print/QuotationPrintDocument';
+import {
+  getQuotationExportWarnings,
+  DEFAULT_PROJECT_TECHNICAL_SECTIONS,
+  QuotationDocumentMode,
+  normalizeQuotationDocumentMode,
+  type TechnicalSection,
+} from '@fym/shared';
 
 const NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'default' | 'outline' }[]> = {
   DRAFT: [{ label: 'Enviar a Revisión', next: 'REVIEW', variant: 'default' }],
@@ -33,13 +42,32 @@ const NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'de
     { label: 'Marcar como Enviada', next: 'SENT', variant: 'default' },
   ],
   SENT: [
-    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Aceptar', next: 'APPROVED', variant: 'default' },
     { label: 'Rechazar', next: 'REJECTED', variant: 'outline' },
+    { label: 'Seguimiento', next: 'FOLLOW_UP', variant: 'outline' },
+    { label: 'Stand By', next: 'STAND_BY', variant: 'outline' },
     { label: 'Marcar Vencida', next: 'EXPIRED', variant: 'outline' },
   ],
+  FOLLOW_UP: [
+    { label: 'Aceptar', next: 'APPROVED', variant: 'default' },
+    { label: 'Rechazar', next: 'REJECTED', variant: 'outline' },
+    { label: 'Stand By', next: 'STAND_BY', variant: 'outline' },
+    { label: 'Reenviar', next: 'SENT', variant: 'outline' },
+  ],
+  STAND_BY: [
+    { label: 'Pasar a Seguimiento', next: 'FOLLOW_UP', variant: 'default' },
+    { label: 'Reenviar', next: 'SENT', variant: 'outline' },
+    { label: 'Rechazar', next: 'REJECTED', variant: 'outline' },
+  ],
   APPROVED: [{ label: 'Marcar Facturada', next: 'INVOICED', variant: 'default' }],
-  REJECTED: [{ label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' }],
-  EXPIRED: [{ label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' }],
+  REJECTED: [
+    { label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' },
+    { label: 'Reactivar Seguimiento', next: 'FOLLOW_UP', variant: 'default' },
+  ],
+  EXPIRED: [
+    { label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' },
+    { label: 'Reactivar Seguimiento', next: 'FOLLOW_UP', variant: 'default' },
+  ],
 };
 
 const extractStoragePath = (url: string): string | null => {
@@ -58,9 +86,10 @@ interface ItemForm {
   unit: string;
   quantity: string;
   unitPrice: string;
+  longDescription: string;
 }
 
-const EMPTY_ITEM: ItemForm = { description: '', unit: 'UND', quantity: '', unitPrice: '' };
+const EMPTY_ITEM: ItemForm = { description: '', unit: 'UND', quantity: '', unitPrice: '', longDescription: '' };
 
 export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}) {
   const searchParams = useSearchParams();
@@ -93,7 +122,47 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
     igvPercentage: '18',
     introductionText: '',
     termsAndConditions: '',
+    companyId: '',
+    contactId: '',
+    tipo: '',
+    generalExpensesPercentage: '',
+    profitMarginPercentage: '',
+    deliveryTimeDays: '',
+    warrantyText: '',
+    manualTotalOverride: '',
+    useManualTotal: false,
+    documentMode: 'SIMPLE' as 'SIMPLE' | 'PROJECT',
+    referenceSubject: '',
+    issuePlace: '',
+    issueDate: '',
+    revisionLabel: '',
+    showTaxBreakdown: true,
+    pricesIncludeIgv: false,
+    commercialTerms: {
+      paymentMethod: '',
+      paymentTerms: '',
+      executionLocation: '',
+      executionTime: '',
+      additionalNotes: '',
+    },
+    technicalSections: [] as TechnicalSection[],
+    coverUrl1: '',
+    coverUrl2: '',
+    coverUrl3: '',
   });
+
+  const [pdfIncomplete, setPdfIncomplete] = useState<string[] | null>(null);
+  const [printWarnings, setPrintWarnings] = useState<string[] | null>(null);
+
+  // Edit section state
+  const [editSectionDialog, setEditSectionDialog] = useState(false);
+  const [editingSection, setEditingSection] = useState<any>(null);
+  const [editSectionForm, setEditSectionForm] = useState({ name: '', description: '' });
+
+  // Companies, contacts & quotation types for meta edit
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [metaContacts, setMetaContacts] = useState<any[]>([]);
+  const [quotationTypes, setQuotationTypes] = useState<string[]>([]);
 
   // Document upload state
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -122,8 +191,23 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
 
   useEffect(() => { load(); }, [load]);
 
+  // Load companies and quotation types once token is available
+  useEffect(() => {
+    if (!token) return;
+    api.get<any>('/companies?pageSize=200', token).then(r => setCompanies(r.data || [])).catch(() => {});
+    api.get<any>('/config/quotation-types', token).then(r => setQuotationTypes(Array.isArray(r) ? r : [])).catch(() => {});
+  }, [token]);
+
+  // Load contacts when companyId changes inside the edit meta dialog
+  useEffect(() => {
+    if (!editMetaDialog || !metaForm.companyId || !token) { setMetaContacts([]); return; }
+    api.get<any>(`/companies/${metaForm.companyId}`, token)
+      .then(r => setMetaContacts(r.data?.contacts || r.contacts || []))
+      .catch(() => setMetaContacts([]));
+  }, [metaForm.companyId, editMetaDialog, token]);
+
   const isDraft = quotation?.status === 'DRAFT';
-  const canEdit = quotation?.status === 'DRAFT';
+  const canEdit = ['DRAFT', 'REVIEW', 'FOLLOW_UP', 'STAND_BY'].includes(quotation?.status);
 
   /* ── Status ──────────────────────────────────────────────── */
   const updateStatus = async (status: string) => {
@@ -160,12 +244,18 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
   };
 
   const addItem = async () => {
+    if (!itemForm.description.trim()) { addToast('La descripción es obligatoria', 'error'); return; }
+    const qty = parseFloat(itemForm.quantity);
+    const price = parseFloat(itemForm.unitPrice);
+    if (isNaN(qty) || qty <= 0) { addToast('La cantidad debe ser mayor a 0', 'error'); return; }
+    if (isNaN(price) || price < 0) { addToast('El precio unitario no puede ser negativo', 'error'); return; }
     try {
       await api.post(`/quotations/${id}/sections/${activeSectionId}/items`, {
-        description: itemForm.description,
+        description: itemForm.description.trim(),
         unit: itemForm.unit,
-        quantity: parseFloat(itemForm.quantity),
-        unitPrice: parseFloat(itemForm.unitPrice),
+        quantity: qty,
+        unitPrice: price,
+        longDescription: itemForm.longDescription.trim() || undefined,
       }, token!);
       addToast('Ítem agregado', 'success');
       setItemDialog(false);
@@ -183,6 +273,24 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
 
   /* ── Edit metadata ───────────────────────────────────────── */
   const openEditMeta = () => {
+    const ct =
+      quotation.commercialTerms && typeof quotation.commercialTerms === 'object'
+        ? (quotation.commercialTerms as Record<string, unknown>)
+        : {};
+    const ts: TechnicalSection[] = Array.isArray(quotation.technicalSections)
+      ? quotation.technicalSections.map((t: TechnicalSection, i: number) => ({
+          order: typeof t.order === 'number' ? t.order : i + 1,
+          title: String(t.title ?? ''),
+          body: String(t.body ?? ''),
+        }))
+      : [];
+    const imgs: string[] = Array.isArray(quotation.projectCoverImageUrls)
+      ? quotation.projectCoverImageUrls.filter((u: unknown) => typeof u === 'string')
+      : [];
+    const mode =
+      normalizeQuotationDocumentMode(quotation.documentMode) === QuotationDocumentMode.PROJECT
+        ? ('PROJECT' as const)
+        : ('SIMPLE' as const);
     setMetaForm({
       title: quotation.title || '',
       description: quotation.description || '',
@@ -191,23 +299,139 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
       igvPercentage: String(quotation.igvPercentage ?? '18'),
       introductionText: quotation.introductionText || '',
       termsAndConditions: quotation.termsAndConditions || '',
+      companyId: quotation.companyId || '',
+      contactId: quotation.contactId || '',
+      tipo: quotation.tipo || '',
+      generalExpensesPercentage: String(quotation.generalExpensesPercentage ?? ''),
+      profitMarginPercentage: String(quotation.profitMarginPercentage ?? ''),
+      deliveryTimeDays: String(quotation.deliveryTimeDays || ''),
+      warrantyText: quotation.warrantyText || '',
+      manualTotalOverride: quotation.manualTotalOverride != null ? String(quotation.manualTotalOverride) : '',
+      useManualTotal: quotation.manualTotalOverride != null && Number(quotation.manualTotalOverride) > 0,
+      documentMode: mode,
+      referenceSubject: quotation.referenceSubject || '',
+      issuePlace: quotation.issuePlace || '',
+      issueDate: quotation.issueDate ? String(quotation.issueDate).slice(0, 10) : '',
+      revisionLabel: quotation.revisionLabel || '',
+      showTaxBreakdown: quotation.showTaxBreakdown !== false,
+      pricesIncludeIgv: !!quotation.pricesIncludeIgv,
+      commercialTerms: {
+        paymentMethod: String(ct.paymentMethod ?? ''),
+        paymentTerms: String(ct.paymentTerms ?? ''),
+        executionLocation: String(ct.executionLocation ?? ''),
+        executionTime: String(ct.executionTime ?? ''),
+        additionalNotes: String(ct.additionalNotes ?? ''),
+      },
+      technicalSections: ts,
+      coverUrl1: imgs[0] || '',
+      coverUrl2: imgs[1] || '',
+      coverUrl3: imgs[2] || '',
     });
     setEditMetaDialog(true);
   };
 
   const saveMeta = async () => {
+    if (!metaForm.title.trim()) { addToast('El título es obligatorio', 'error'); return; }
+    const igv = parseFloat(metaForm.igvPercentage);
+    if (isNaN(igv) || igv < 0 || igv > 100) { addToast('El IGV debe ser un valor entre 0 y 100', 'error'); return; }
+    const validity = parseInt(metaForm.validityDays, 10);
+    if (isNaN(validity) || validity < 1) { addToast('La validez debe ser al menos 1 día', 'error'); return; }
+
+    // Validate manual override if enabled
+    if (metaForm.useManualTotal && metaForm.manualTotalOverride !== '') {
+      const overrideVal = parseFloat(metaForm.manualTotalOverride);
+      if (isNaN(overrideVal) || overrideVal < 0) {
+        addToast('El monto manual debe ser un valor positivo', 'error');
+        return;
+      }
+    }
+
     try {
-      await api.patch(`/quotations/${id}`, {
-        title: metaForm.title,
-        description: metaForm.description,
-        validityDays: parseInt(metaForm.validityDays, 10) || 30,
+      const body: any = {
+        title: metaForm.title.trim(),
+        description: metaForm.description || undefined,
+        validityDays: validity,
         currency: metaForm.currency,
-        igvPercentage: parseFloat(metaForm.igvPercentage) || 18,
+        igvPercentage: igv,
         introductionText: metaForm.introductionText || undefined,
         termsAndConditions: metaForm.termsAndConditions || undefined,
-      }, token!);
+      };
+      if (metaForm.companyId) body.companyId = metaForm.companyId;
+      // Allow clearing contactId if company changes
+      body.contactId = metaForm.contactId || null;
+      if (metaForm.tipo) body.tipo = metaForm.tipo;
+      if (metaForm.generalExpensesPercentage !== '') {
+        const gep = parseFloat(metaForm.generalExpensesPercentage);
+        if (!isNaN(gep) && gep >= 0) body.generalExpensesPercentage = gep;
+      }
+      if (metaForm.profitMarginPercentage !== '') {
+        const pmp = parseFloat(metaForm.profitMarginPercentage);
+        if (!isNaN(pmp) && pmp >= 0) body.profitMarginPercentage = pmp;
+      }
+      if (metaForm.deliveryTimeDays !== '') {
+        const dtd = parseInt(metaForm.deliveryTimeDays, 10);
+        if (!isNaN(dtd) && dtd >= 0) body.deliveryTimeDays = dtd;
+      }
+      if (metaForm.warrantyText) body.warrantyText = metaForm.warrantyText;
+      body.documentMode = metaForm.documentMode;
+      body.referenceSubject = metaForm.referenceSubject.trim();
+      body.issuePlace = metaForm.issuePlace.trim();
+      body.issueDate = metaForm.issueDate.trim() || null;
+      body.revisionLabel = metaForm.revisionLabel.trim();
+      body.showTaxBreakdown = metaForm.showTaxBreakdown;
+      body.pricesIncludeIgv = metaForm.pricesIncludeIgv;
+      body.commercialTerms = {
+        paymentMethod: metaForm.commercialTerms.paymentMethod.trim() || undefined,
+        paymentTerms: metaForm.commercialTerms.paymentTerms.trim() || undefined,
+        executionLocation: metaForm.commercialTerms.executionLocation.trim() || undefined,
+        executionTime: metaForm.commercialTerms.executionTime.trim() || undefined,
+        additionalNotes: metaForm.commercialTerms.additionalNotes.trim() || undefined,
+      };
+      body.technicalSections =
+        metaForm.documentMode === 'PROJECT' ? metaForm.technicalSections : [];
+      const coverUrls = [metaForm.coverUrl1, metaForm.coverUrl2, metaForm.coverUrl3]
+        .map(s => s.trim())
+        .filter(Boolean)
+        .slice(0, 5);
+      body.projectCoverImageUrls = coverUrls;
+      await api.patch(`/quotations/${id}`, body, token!);
+
+      // Handle manual total override separately via dedicated endpoint
+      if (metaForm.useManualTotal && metaForm.manualTotalOverride !== '') {
+        const overrideVal = parseFloat(metaForm.manualTotalOverride);
+        await api.patch(`/quotations/${id}/total`, { manualTotal: overrideVal }, token!);
+      } else if (!metaForm.useManualTotal) {
+        // Clear override: recalculate from items
+        await api.patch(`/quotations/${id}/total`, { manualTotal: null }, token!);
+        await api.post(`/quotations/${id}/recalculate`, {}, token!);
+      } else {
+        // Just recalculate margins
+        await api.post(`/quotations/${id}/recalculate`, {}, token!).catch(() => {});
+      }
+
       addToast('Cotización actualizada', 'success');
       setEditMetaDialog(false);
+      load();
+    } catch (e: any) { addToast(e.message, 'error'); }
+  };
+
+  /* ── Edit section ────────────────────────────────────────── */
+  const openEditSection = (section: any) => {
+    setEditingSection(section);
+    setEditSectionForm({ name: section.name, description: section.description || '' });
+    setEditSectionDialog(true);
+  };
+
+  const saveEditSection = async () => {
+    if (!editSectionForm.name.trim()) { addToast('El nombre de la sección es obligatorio', 'error'); return; }
+    try {
+      await api.put(
+        `/quotations/${id}/sections/${editingSection.id}`,
+        { name: editSectionForm.name.trim(), description: editSectionForm.description },
+        token!
+      );
+      addToast('Sección actualizada', 'success');
+      setEditSectionDialog(false);
       load();
     } catch (e: any) { addToast(e.message, 'error'); }
   };
@@ -221,19 +445,26 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
       unit: item.unit,
       quantity: String(item.quantity),
       unitPrice: String(item.unitPrice),
+      longDescription: String(item.longDescription ?? ''),
     });
     setEditItemDialog(true);
   };
 
   const saveEditItem = async () => {
+    if (!editItemForm.description.trim()) { addToast('La descripción es obligatoria', 'error'); return; }
+    const qty = parseFloat(editItemForm.quantity);
+    const price = parseFloat(editItemForm.unitPrice);
+    if (isNaN(qty) || qty <= 0) { addToast('La cantidad debe ser mayor a 0', 'error'); return; }
+    if (isNaN(price) || price < 0) { addToast('El precio unitario no puede ser negativo', 'error'); return; }
     try {
       await api.patch(
         `/quotations/${id}/sections/${editingSectionId}/items/${editingItem.id}`,
         {
-          description: editItemForm.description,
+          description: editItemForm.description.trim(),
           unit: editItemForm.unit,
-          quantity: parseFloat(editItemForm.quantity),
-          unitPrice: parseFloat(editItemForm.unitPrice),
+          quantity: qty,
+          unitPrice: price,
+          longDescription: editItemForm.longDescription.trim() || undefined,
         },
         token!
       );
@@ -241,6 +472,19 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
       setEditItemDialog(false);
       load();
     } catch (e: any) { addToast(e.message, 'error'); }
+  };
+
+  /* ── Recalculate ───────────────────────────────────────── */
+  const [recalculating, setRecalculating] = useState(false);
+  const [spreadsheetMode, setSpreadsheetMode] = useState(true);
+  const recalculate = async () => {
+    try {
+      setRecalculating(true);
+      await api.post(`/quotations/${id}/recalculate`, {}, token!);
+      addToast('Montos recalculados correctamente', 'success');
+      load();
+    } catch (e: any) { addToast(e.message, 'error'); }
+    finally { setRecalculating(false); }
   };
 
   /* ── Convert to Project ──────────────────────────────────── */
@@ -258,8 +502,44 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
     }
   };
 
-  /* ── PDF ─────────────────────────────────────────────────── */
-  const handlePrint = () => window.print();
+  /* ── PDF / impresión ───────────────────────────────────── */
+  const handlePrint = () => {
+    if (!quotation) return;
+    const w = getQuotationExportWarnings({
+      documentMode: quotation.documentMode,
+      referenceSubject: quotation.referenceSubject,
+      title: quotation.title,
+      commercialTerms: quotation.commercialTerms,
+      technicalSections: quotation.technicalSections,
+      sections: quotation.sections,
+    });
+    if (w.length) {
+      setPrintWarnings(w);
+      return;
+    }
+    window.print();
+  };
+
+  const downloadQuotationPdf = async (force = false) => {
+    if (!id || !token) return;
+    try {
+      await api.downloadQuotationPdf(
+        id,
+        `cotizacion-${quotation?.quotationNumber || quotation?.code || id}.pdf`,
+        token,
+        force,
+      );
+      addToast('PDF descargado', 'success');
+      setPdfIncomplete(null);
+    } catch (e: unknown) {
+      const err = e as Error & { warnings?: string[] };
+      if (Array.isArray(err.warnings) && err.warnings.length) {
+        setPdfIncomplete(err.warnings);
+        return;
+      }
+      addToast(err?.message || 'Error al generar PDF', 'error');
+    }
+  };
 
   /* ── Document upload ─────────────────────────────────────── */
   const uploadDocument = async (
@@ -372,9 +652,22 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
               </div>
               
               <div className="flex flex-wrap items-center gap-6 pt-2">
+                {/* Backend modela las cotizaciones con company + contact (no `client`).
+                    Mostramos primero la empresa real; si no hay, usamos el legacy `client.name`;
+                    como último recurso, "Sin cliente asignado". */}
                 <div className="flex items-center gap-2.5 text-sm text-slate-300 bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
                   <Building2 className="h-4 w-4 text-orange-400" />
-                  <span className="font-semibold">{quotation.client?.name || 'Carga Directa'}</span>
+                  <span className="font-semibold">
+                    {quotation.company?.tradeName ||
+                      quotation.company?.businessName ||
+                      quotation.client?.name ||
+                      'Sin cliente asignado'}
+                  </span>
+                  {quotation.contact?.fullName && (
+                    <span className="text-slate-500 text-xs font-medium border-l border-white/10 pl-2.5 ml-1">
+                      {quotation.contact.fullName}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2.5 text-sm text-slate-300 bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
                   <Calendar className="h-4 w-4 text-blue-400" />
@@ -390,13 +683,22 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
             </div>
 
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3 self-end">
-                <Button 
-                  onClick={handlePrint} 
-                  className="bg-white hover:bg-slate-100 text-slate-900 font-bold rounded-2xl px-6 shadow-xl shadow-white/5 transition-all active:scale-95"
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 self-end">
+                <Button
+                  variant="outline"
+                  onClick={handlePrint}
+                  className="border-white/25 bg-white/10 text-white hover:bg-white/20 font-bold rounded-2xl px-6"
                 >
                   <Printer className="mr-2 h-4 w-4" />
-                  Generar PDF
+                  Imprimir
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadQuotationPdf(false)}
+                  className="border-white/25 bg-white/10 text-white hover:bg-white/20 font-bold rounded-2xl px-6"
+                >
+                  <FileDown className="mr-2 h-4 w-4" />
+                  PDF servidor
                 </Button>
                 {canEdit && (
                   <Button 
@@ -493,33 +795,57 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* Left Column: Sections & Items */}
-          <div className="lg:col-span-8 space-y-8">
+          <div className="lg:col-span-8 space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold flex items-center gap-3">
                 <Package className="h-5 w-5 text-orange-500" />
                 Desglose de Conceptos
               </h2>
               {canEdit && (
-                <Button 
-                  onClick={() => setSectionDialog(true)} 
-                  variant="outline" 
-                  className="rounded-2xl font-bold border-white/20 bg-white/5 backdrop-blur hover:bg-white/10"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Añadir Sección
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={spreadsheetMode ? 'default' : 'outline'}
+                    onClick={() => setSpreadsheetMode(true)}
+                    className="rounded-xl font-bold text-xs"
+                  >
+                    <Sheet className="mr-1.5 h-3.5 w-3.5" />
+                    Vista Tabla
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={!spreadsheetMode ? 'default' : 'outline'}
+                    onClick={() => setSpreadsheetMode(false)}
+                    className="rounded-xl font-bold text-xs"
+                  >
+                    <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
+                    Vista Tarjetas
+                  </Button>
+                </div>
               )}
             </div>
 
+            {canEdit && spreadsheetMode ? (
+              <SpreadsheetEditor
+                quotationId={id!}
+                sections={quotation.sections || []}
+                currency={currency}
+                token={token!}
+                onRefresh={load}
+              />
+            ) : (
+              <>
             {(quotation.sections || []).length === 0 && (
               <div className="bg-white/5 rounded-3xl border-2 border-dashed border-white/10 p-16 text-center space-y-4">
                 <div className="h-16 w-16 bg-white/5 rounded-full flex items-center justify-center mx-auto">
                   <Plus className="h-8 w-8 text-muted-foreground opacity-20" />
                 </div>
                 <p className="text-muted-foreground font-medium italic">No hay secciones definidas en esta cotización.</p>
-                <Button onClick={() => setSectionDialog(true)} variant="link" className="text-orange-500 font-bold">
-                  Comienza agregando tu primera sección
-                </Button>
+                {canEdit && (
+                  <Button onClick={() => setSectionDialog(true)} variant="link" className="text-orange-500 font-bold">
+                    Comienza agregando tu primera sección
+                  </Button>
+                )}
               </div>
             )}
 
@@ -545,6 +871,17 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                       >
                         <Plus className="h-3.5 w-3.5 mr-1.5" />
                         Añadir Ítem
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-8 w-8 p-0 text-blue-500 hover:bg-blue-500/10"
+                        onClick={() => openEditSection(section)}
+                        title="Editar sección"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     )}
                     {canEdit && (
@@ -604,6 +941,8 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                 </CardContent>
               </Card>
             ))}
+              </>
+            )}
           </div>
 
           {/* Right Column: Assets & Details */}
@@ -780,6 +1119,20 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                   </div>
                 </div>
                 
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={recalculate}
+                    disabled={recalculating}
+                    className="h-8 px-3 rounded-xl text-[11px] font-bold text-slate-400 hover:text-white hover:bg-white/10 border border-white/10 transition-all"
+                    title="Recalcular montos a partir de los ítems actuales (limpia el ajuste manual si existe)"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${recalculating ? 'animate-spin' : ''}`} />
+                    {recalculating ? 'Calculando...' : 'Recalcular'}
+                  </Button>
+                )}
+                
                 <div className="space-y-2 pt-2">
                   <div className="flex justify-between items-center px-2 py-1">
                     <span className="text-xs text-slate-400">Subtotal Operativo</span>
@@ -791,7 +1144,15 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                   </div>
                   <div className="h-px bg-white/10 my-2" />
                   <div className="flex justify-between items-center px-4 py-3 bg-white/5 rounded-2xl border border-white/5 shadow-inner">
-                    <span className="text-xs font-black uppercase tracking-widest text-blue-400">Total Propuesta</span>
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black uppercase tracking-widest text-blue-400">Total Propuesta</span>
+                      {quotation.manualTotalOverride != null && Number(quotation.manualTotalOverride) > 0 && (
+                        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-400 uppercase tracking-wider">
+                          <AlertCircle className="h-2.5 w-2.5" />
+                          Monto ajustado manualmente
+                        </span>
+                      )}
+                    </div>
                     <span className="text-lg font-mono font-black">{fmt(quotation.total)}</span>
                   </div>
                 </div>
@@ -805,160 +1166,351 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
         </div>
       </div>
 
-      {/* ══ Print view (PDF Layout) ═══════════════════════════ */}
-      <div className="hidden print:block font-sans bg-white text-black p-0 min-h-screen">
-        {/* Header Section */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px', borderBottom: '3px solid #1e3a5f', paddingBottom: '20px' }}>
-          <div>
-            {companySettings?.logoUrl && (
-              <img src={companySettings.logoUrl} alt="Logo" style={{ height: '60px', objectFit: 'contain', marginBottom: '12px' }} />
-            )}
-            <h2 style={{ fontSize: '18pt', fontWeight: '900', color: '#1e3a5f', margin: '0', textTransform: 'uppercase', letterSpacing: '-0.02em' }}>{companySettings?.name || 'FYM TECHNOLOGIES'}</h2>
-            <p style={{ fontSize: '9pt', color: '#6b7280', margin: '2px 0 0' }}>RUC: {companySettings?.ruc || 'XXXXXXXXXXX'}</p>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ background: '#1e3a5f', color: 'white', padding: '10px 20px', borderRadius: '4px', marginBottom: '8px' }}>
-              <p style={{ fontSize: '8pt', fontWeight: '700', margin: '0', textTransform: 'uppercase', opacity: '0.8' }}>Cotización N°</p>
-              <p style={{ fontSize: '14pt', fontWeight: '900', margin: '0' }}>{quotation.code || `COT-${id?.slice(0, 5).toUpperCase()}`}</p>
-            </div>
-            <p style={{ fontSize: '9pt', color: '#111827', margin: '0', fontWeight: '700' }}>Fecha: {new Date(quotation.createdAt).toLocaleDateString()}</p>
-            <p style={{ fontSize: '9pt', color: '#6b7280', margin: '2px 0 0' }}>Validez: {quotation.validityDays || 30} días</p>
-          </div>
-        </div>
-
-        {/* Info Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', marginBottom: '32px' }}>
-          <div>
-            <h4 style={{ fontSize: '8pt', fontWeight: '800', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px', borderBottom: '1px solid #fed7aa', paddingBottom: '4px' }}>Información del Cliente</h4>
-            <p style={{ fontSize: '10pt', fontWeight: '800', color: '#111827', margin: '0 0 2px' }}>{quotation.client?.name || 'Venta Directa'}</p>
-            <p style={{ fontSize: '9pt', color: '#374151', margin: '0' }}>{quotation.client?.contactName || 'Responsable de Logística'}</p>
-            <p style={{ fontSize: '9pt', color: '#6b7280', margin: '2px 0 0' }}>{quotation.client?.email || ''}</p>
-          </div>
-          <div>
-            <h4 style={{ fontSize: '8pt', fontWeight: '800', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px', borderBottom: '1px solid #fed7aa', paddingBottom: '4px' }}>Referencia / Proyecto</h4>
-            <p style={{ fontSize: '10pt', fontWeight: '800', color: '#111827', margin: '0 0 2px' }}>{quotation.title || 'Propuesta Comercial'}</p>
-            <p style={{ fontSize: '9pt', color: '#374151', margin: '0', lineHeight: '1.4' }}>{quotation.description || 'Suministro y servicios según requerimiento.'}</p>
-          </div>
-        </div>
-
-        {/* Introduction */}
-        {quotation.introductionText && (
-          <div style={{ marginBottom: '32px', padding: '14px', background: '#f8fafc', borderLeft: '4px solid #1e3a5f', borderRadius: '0 4px 4px 0' }}>
-            <p style={{ fontSize: '9.5pt', color: '#1e293b', margin: '0', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{quotation.introductionText}</p>
-          </div>
-        )}
-
-        {/* Sections & Items */}
-        {(quotation.sections || []).map((section: any) => (
-          <div key={section.id} style={{ marginBottom: '28px', breakInside: 'avoid' }}>
-            <div style={{ background: '#1e3a5f', color: 'white', padding: '6px 14px', borderRadius: '4px 4px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '9pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{section.name}</span>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
-              <thead>
-                <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #1e3a5f' }}>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '800', color: '#1e3a5f' }}>Descripción</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'center', width: '60px', fontWeight: '800', color: '#1e3a5f' }}>Und.</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', width: '80px', fontWeight: '800', color: '#1e3a5f' }}>Cant.</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', width: '90px', fontWeight: '800', color: '#1e3a5f' }}>P. Unit</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', width: '100px', fontWeight: '800', color: '#1e3a5f' }}>Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(section.items || []).map((item: any, ii: number) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0', background: ii % 2 === 0 ? '#ffffff' : '#fcfcfc' }}>
-                    <td style={{ padding: '8px 14px', color: '#1e293b', lineHeight: '1.4' }}>{item.description}</td>
-                    <td style={{ padding: '8px 8px', textAlign: 'center', color: '#64748b', fontFamily: 'monospace' }}>{item.unit}</td>
-                    <td style={{ padding: '8px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#1e293b' }}>{Number(item.quantity).toFixed(2)}</td>
-                    <td style={{ padding: '8px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#1e293b' }}>{Number(item.unitPrice).toFixed(2)}</td>
-                    <td style={{ padding: '8px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#111827' }}>
-                      {Number(item.subtotal ?? Number(item.quantity) * Number(item.unitPrice)).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
-
-        {/* Totals Section */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '40px', breakInside: 'avoid' }}>
-          <div style={{ width: '260px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '9pt', color: '#64748b', fontWeight: '600' }}>SUBTOTAL</span>
-              <span style={{ fontSize: '9pt', fontFamily: 'monospace', fontWeight: '700' }}>{fmt(quotation.subtotal)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '9pt', color: '#64748b', fontWeight: '600' }}>IGV ({quotation.igvPercentage ?? 18}%)</span>
-              <span style={{ fontSize: '9pt', fontFamily: 'monospace', fontWeight: '700' }}>{fmt(quotation.igv)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#1e3a5f', color: 'white', borderRadius: '0 0 4px 4px shadow-lg' }}>
-              <span style={{ fontSize: '11pt', fontWeight: '900', letterSpacing: '0.05em' }}>TOTAL</span>
-              <span style={{ fontSize: '11pt', fontFamily: 'monospace', fontWeight: '900' }}>{fmt(quotation.total)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Terms & Bank Info */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '40px', borderTop: '2px solid #f1f5f9', paddingTop: '24px', breakInside: 'avoid' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {quotation.termsAndConditions && (
-              <div style={{ marginBottom: '16px' }}>
-                <h5 style={{ fontSize: '8pt', fontWeight: '800', color: '#ea580c', textTransform: 'uppercase', margin: '0 0 6px' }}>Términos y Condiciones</h5>
-                <p style={{ fontSize: '8.5pt', color: '#475569', lineHeight: '1.5', margin: '0', whiteSpace: 'pre-wrap' }}>{quotation.termsAndConditions}</p>
-              </div>
-            )}
-            {companySettings?.bankDetails && (
-              <div>
-                <h5 style={{ fontSize: '8pt', fontWeight: '800', color: '#ea580c', textTransform: 'uppercase', margin: '0 0 6px' }}>Información de Pago</h5>
-                <p style={{ fontSize: '8.5pt', color: '#475569', lineHeight: '1.5', margin: '0', whiteSpace: 'pre-wrap' }}>{companySettings.bankDetails}</p>
-              </div>
-            )}
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: '10px' }}>
-            {companySettings?.signatureUrl && (
-              <img src={companySettings.signatureUrl} alt="Firma" style={{ height: '80px', objectFit: 'contain', marginBottom: '10px' }} />
-            )}
-            <div style={{ width: '100%', borderTop: '1px solid #94a3b8', paddingTop: '8px', textAlign: 'center' }}>
-              <p style={{ fontSize: '9pt', fontWeight: '800', color: '#1e293b', margin: '0' }}>{companySettings?.legalRepresentative || companySettings?.name}</p>
-              <p style={{ fontSize: '8pt', color: '#64748b', margin: '2px 0 0' }}>{companySettings?.legalRepresentativeRole || 'Representante Legal'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ position: 'fixed', bottom: '20px', left: '0', right: '0', borderTop: '1px solid #f1f5f9', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontSize: '7pt', color: '#94a3b8', paddingLeft: '40px', paddingRight: '40px' }}>
-          <span>{companySettings?.address || 'Lima, Perú'} — {companySettings?.phone || ''} — {companySettings?.website || ''}</span>
-          <span>Página 1 de 1</span>
-        </div>
-      </div>
+      <QuotationPrintDocument quotation={quotation} companySettings={companySettings} quotationId={id!} />
 
       {/* ══ Dialogs ══════════════════════════════════════════ */}
 
       {/* Edit metadata dialog */}
       <Dialog open={editMetaDialog} onOpenChange={setEditMetaDialog}>
-        <DialogContent className="max-w-2xl overflow-hidden p-0 border-none shadow-2xl font-jakarta">
+        <DialogContent className="max-w-4xl overflow-hidden p-0 border-none shadow-2xl font-jakarta">
           <DialogHeader className="p-6 bg-slate-900 text-white border-b border-white/10">
             <DialogTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
               <Pencil className="h-6 w-6 text-orange-500" />
               Parámetros de la Cotización
             </DialogTitle>
           </DialogHeader>
-          <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto bg-white dark:bg-slate-950">
-            <div className="grid gap-5">
+          <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto bg-white dark:bg-slate-950">
+            
+            {/* ── Cliente & Tipo ── */}
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500 flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5" /> Vinculación Comercial
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="meta-company" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Cliente / Empresa</Label>
+                  <Select value={metaForm.companyId || '__none__'} onValueChange={v => setMetaForm(f => ({ ...f, companyId: v === '__none__' ? '' : v, contactId: '' }))}>
+                    <SelectTrigger id="meta-company" className="h-11 rounded-xl border-slate-200 font-medium"><SelectValue placeholder="Sin cliente asignado" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sin cliente (Carga Directa)</SelectItem>
+                      {companies.map((c: any) => (
+                        <SelectItem key={c.id} value={c.id}>{c.tradeName || c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="meta-contact" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Contacto</Label>
+                  <Select value={metaForm.contactId || '__none__'} onValueChange={v => setMetaForm(f => ({ ...f, contactId: v === '__none__' ? '' : v }))}>
+                    <SelectTrigger id="meta-contact" className="h-11 rounded-xl border-slate-200 font-medium disabled:opacity-50" disabled={!metaForm.companyId}><SelectValue placeholder="Selecciona un contacto" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sin contacto específico</SelectItem>
+                      {metaContacts.map((c: any) => (
+                        <SelectItem key={c.id} value={c.id}>{c.fullName || c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="space-y-2">
-                <Label htmlFor="meta-title" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Título del Proyecto/Servicio</Label>
+                <Label htmlFor="meta-tipo" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Tipo de Cotización</Label>
+                <Select value={metaForm.tipo || '__none__'} onValueChange={v => setMetaForm(f => ({ ...f, tipo: v === '__none__' ? '' : v }))}>
+                  <SelectTrigger id="meta-tipo" className="h-11 rounded-xl border-slate-200 font-medium"><SelectValue placeholder="Sin categoría" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin categoría</SelectItem>
+                    {quotationTypes.map((t: string) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-white/5" />
+
+            {/* ── Documento comercial (simple / proyecto) ── */}
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 flex items-center gap-1.5">
+                <LayoutGrid className="h-3.5 w-3.5" /> Documento al cliente
+              </h3>
+              <div className="space-y-2">
+                <Label htmlFor="meta-doc-mode" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                  Modo de documento
+                </Label>
+                <Select
+                  value={metaForm.documentMode}
+                  onValueChange={v =>
+                    setMetaForm(f => ({
+                      ...f,
+                      documentMode: v === 'PROJECT' ? 'PROJECT' : 'SIMPLE',
+                      technicalSections:
+                        v === 'PROJECT' && f.technicalSections.length === 0
+                          ? [...DEFAULT_PROJECT_TECHNICAL_SECTIONS]
+                          : v === 'SIMPLE'
+                            ? []
+                            : f.technicalSections,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="meta-doc-mode" className="h-11 rounded-xl border-slate-200 font-medium">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SIMPLE">Simple — resumen comercial</SelectItem>
+                    <SelectItem value="PROJECT">Proyecto — propuesta técnica multipágina</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="meta-ref" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Referencia / asunto <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="meta-ref"
+                    className="h-11 rounded-xl border-slate-200"
+                    value={metaForm.referenceSubject}
+                    onChange={e => setMetaForm(f => ({ ...f, referenceSubject: e.target.value }))}
+                    placeholder="Línea de referencia para el PDF"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="meta-rev" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Revisión (ej. REV1)
+                  </Label>
+                  <Input
+                    id="meta-rev"
+                    className="h-11 rounded-xl border-slate-200 font-mono"
+                    value={metaForm.revisionLabel}
+                    onChange={e => setMetaForm(f => ({ ...f, revisionLabel: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="meta-place" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Lugar de emisión
+                  </Label>
+                  <Input
+                    id="meta-place"
+                    className="h-11 rounded-xl border-slate-200"
+                    value={metaForm.issuePlace}
+                    onChange={e => setMetaForm(f => ({ ...f, issuePlace: e.target.value }))}
+                    placeholder="Ej: Lima"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="meta-issue-date" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Fecha de emisión (documento)
+                  </Label>
+                  <Input
+                    id="meta-issue-date"
+                    type="date"
+                    className="h-11 rounded-xl border-slate-200 font-mono"
+                    value={metaForm.issueDate}
+                    onChange={e => setMetaForm(f => ({ ...f, issueDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 accent-orange-500"
+                    checked={metaForm.showTaxBreakdown}
+                    onChange={e => setMetaForm(f => ({ ...f, showTaxBreakdown: e.target.checked }))}
+                  />
+                  Mostrar desglose IGV en documento
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 accent-orange-500"
+                    checked={metaForm.pricesIncludeIgv}
+                    onChange={e => setMetaForm(f => ({ ...f, pricesIncludeIgv: e.target.checked }))}
+                  />
+                  Precios incluyen IGV
+                </label>
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Si no marca «incluye IGV», el texto del PDF indicará montos más IGV. Alinee esto con cómo cotiza cada ítem.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Forma de pago
+                  </Label>
+                  <Input
+                    className="h-11 rounded-xl border-slate-200"
+                    value={metaForm.commercialTerms.paymentMethod}
+                    onChange={e =>
+                      setMetaForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, paymentMethod: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Condiciones / términos de pago
+                  </Label>
+                  <Input
+                    className="h-11 rounded-xl border-slate-200"
+                    value={metaForm.commercialTerms.paymentTerms}
+                    onChange={e =>
+                      setMetaForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, paymentTerms: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Lugar de ejecución
+                  </Label>
+                  <Input
+                    className="h-11 rounded-xl border-slate-200"
+                    value={metaForm.commercialTerms.executionLocation}
+                    onChange={e =>
+                      setMetaForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, executionLocation: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Plazo / tiempo de ejecución
+                  </Label>
+                  <Input
+                    className="h-11 rounded-xl border-slate-200"
+                    value={metaForm.commercialTerms.executionTime}
+                    onChange={e =>
+                      setMetaForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, executionTime: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                    Notas comerciales adicionales
+                  </Label>
+                  <Textarea
+                    rows={2}
+                    className="rounded-xl border-slate-200 text-sm"
+                    value={metaForm.commercialTerms.additionalNotes}
+                    onChange={e =>
+                      setMetaForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, additionalNotes: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              {metaForm.documentMode === 'PROJECT' && (
+                <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-white/10">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Portada e imágenes (URL)</h4>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Input
+                      placeholder="Imagen 1 (URL)"
+                      className="h-10 rounded-xl text-xs"
+                      value={metaForm.coverUrl1}
+                      onChange={e => setMetaForm(f => ({ ...f, coverUrl1: e.target.value }))}
+                    />
+                    <Input
+                      placeholder="Imagen 2 (URL)"
+                      className="h-10 rounded-xl text-xs"
+                      value={metaForm.coverUrl2}
+                      onChange={e => setMetaForm(f => ({ ...f, coverUrl2: e.target.value }))}
+                    />
+                    <Input
+                      placeholder="Imagen 3 (URL)"
+                      className="h-10 rounded-xl text-xs"
+                      value={metaForm.coverUrl3}
+                      onChange={e => setMetaForm(f => ({ ...f, coverUrl3: e.target.value }))}
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Secciones técnicas numeradas</h4>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl text-xs font-bold shrink-0"
+                      onClick={() =>
+                        setMetaForm(f => ({ ...f, technicalSections: [...DEFAULT_PROJECT_TECHNICAL_SECTIONS] }))
+                      }
+                    >
+                      Cargar plantilla estándar
+                    </Button>
+                  </div>
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                    {metaForm.technicalSections.map((sec, idx) => (
+                      <div key={`${sec.order}-${idx}`} className="rounded-xl border border-slate-200 dark:border-white/10 p-3 space-y-2 bg-slate-50/50 dark:bg-slate-900/30">
+                        <div className="flex gap-2 items-center">
+                          <span className="text-[10px] font-mono font-bold text-slate-400 w-6">{sec.order}.</span>
+                          <Input
+                            className="h-9 rounded-lg text-sm font-semibold"
+                            value={sec.title}
+                            onChange={e => {
+                              const next = [...metaForm.technicalSections];
+                              next[idx] = { ...next[idx], title: e.target.value };
+                              setMetaForm(f => ({ ...f, technicalSections: next }));
+                            }}
+                          />
+                        </div>
+                        <Textarea
+                          rows={3}
+                          className="rounded-lg text-xs"
+                          placeholder="Contenido de la sección..."
+                          value={sec.body}
+                          onChange={e => {
+                            const next = [...metaForm.technicalSections];
+                            next[idx] = { ...next[idx], body: e.target.value };
+                            setMetaForm(f => ({ ...f, technicalSections: next }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-white/5" />
+
+            {/* ── Datos principales ── */}
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" /> Datos del Proyecto
+              </h3>
+              <div className="space-y-2">
+                <Label htmlFor="meta-title" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Título del Proyecto / Servicio <span className="text-red-500">*</span></Label>
                 <Input id="meta-title" className="h-11 rounded-xl border-slate-200 focus:ring-orange-500/20 focus:border-orange-500" value={metaForm.title} onChange={e => setMetaForm(f => ({ ...f, title: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="meta-desc" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Resumen Operativo</Label>
-                <Input id="meta-desc" className="h-11 rounded-xl border-slate-200 focus:ring-orange-500/20 focus:border-orange-500" value={metaForm.description} onChange={e => setMetaForm(f => ({ ...f, description: e.target.value }))} />
+                <Textarea id="meta-desc" rows={2} className="rounded-xl border-slate-200 text-sm" value={metaForm.description} onChange={e => setMetaForm(f => ({ ...f, description: e.target.value }))} placeholder="Breve descripción del trabajo..." />
               </div>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-white/5" />
+
+            {/* ── Condiciones financieras ── */}
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5" /> Condiciones Financieras
+              </h3>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="meta-validity" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Validez (días)</Label>
-                  <Input id="meta-validity" type="number" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.validityDays} onChange={e => setMetaForm(f => ({ ...f, validityDays: e.target.value }))} />
+                  <Label htmlFor="meta-validity" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Validez (días) <span className="text-red-500">*</span></Label>
+                  <Input id="meta-validity" type="number" min="1" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.validityDays} onChange={e => setMetaForm(f => ({ ...f, validityDays: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="meta-currency" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Moneda</Label>
@@ -971,13 +1523,100 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="meta-igv" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">IGV (%)</Label>
-                  <Input id="meta-igv" type="number" step="0.1" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.igvPercentage || ''} onChange={e => setMetaForm(f => ({ ...f, igvPercentage: e.target.value }))} />
+                  <Label htmlFor="meta-igv" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">IGV (%) <span className="text-red-500">*</span></Label>
+                  <Input id="meta-igv" type="number" step="0.1" min="0" max="100" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.igvPercentage} onChange={e => setMetaForm(f => ({ ...f, igvPercentage: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="meta-gep" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Gastos Generales (%)</Label>
+                  <Input id="meta-gep" type="number" step="0.1" min="0" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.generalExpensesPercentage} onChange={e => setMetaForm(f => ({ ...f, generalExpensesPercentage: e.target.value }))} placeholder="Ej: 10" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="meta-pmp" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Margen de Utilidad (%)</Label>
+                  <Input id="meta-pmp" type="number" step="0.1" min="0" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.profitMarginPercentage} onChange={e => setMetaForm(f => ({ ...f, profitMarginPercentage: e.target.value }))} placeholder="Ej: 15" />
                 </div>
               </div>
             </div>
-            
-            <div className="space-y-5 pt-2">
+
+            <div className="h-px bg-slate-100 dark:bg-white/5" />
+
+            {/* ── Plazos & garantías ── */}
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" /> Plazos & Garantías
+              </h3>
+              <div className="space-y-2">
+                <Label htmlFor="meta-delivery" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Plazo de Entrega (días)</Label>
+                <Input id="meta-delivery" type="number" min="0" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.deliveryTimeDays} onChange={e => setMetaForm(f => ({ ...f, deliveryTimeDays: e.target.value }))} placeholder="Días calendario desde la aprobación" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="meta-warranty" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Texto de Garantía</Label>
+                <Textarea id="meta-warranty" rows={2} className="rounded-xl border-slate-200 text-sm" value={metaForm.warrantyText} onChange={e => setMetaForm(f => ({ ...f, warrantyText: e.target.value }))} placeholder="Ej: Garantía de 12 meses por defectos de fabricación..." />
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-white/5" />
+
+            {/* ── Ajuste de Monto Total ── */}
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5" /> Ajuste de Monto Total
+              </h3>
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-500/20 space-y-4">
+                <div className="flex items-start gap-3">
+                  <input
+                    id="meta-use-manual"
+                    type="checkbox"
+                    checked={metaForm.useManualTotal}
+                    onChange={e => setMetaForm(f => ({ ...f, useManualTotal: e.target.checked }))}
+                    className="mt-1 h-4 w-4 rounded border-amber-400 text-amber-500 accent-amber-500 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="meta-use-manual" className="text-sm font-bold text-amber-800 dark:text-amber-400 cursor-pointer block">
+                      Establecer monto total manualmente
+                    </label>
+                    <p className="text-[10px] text-amber-600/80 dark:text-amber-500/70 mt-0.5 leading-relaxed">
+                      Permite fijar el total de la propuesta independientemente del cálculo automático.
+                      Al desactivar, se restaurará el total calculado a partir de los ítems.
+                    </p>
+                  </div>
+                </div>
+                {metaForm.useManualTotal && (
+                  <div className="space-y-2 pt-1">
+                    <Label htmlFor="meta-manual-total" className="text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400 ml-1">
+                      Monto Total ({metaForm.currency}) <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-black text-amber-500 pointer-events-none">{metaForm.currency}</span>
+                      <Input
+                        id="meta-manual-total"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="h-12 rounded-xl border-amber-300 dark:border-amber-600 font-mono text-lg font-bold pl-14 focus:ring-amber-500/20 focus:border-amber-500"
+                        value={metaForm.manualTotalOverride}
+                        onChange={e => setMetaForm(f => ({ ...f, manualTotalOverride: e.target.value }))}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    {metaForm.manualTotalOverride && (
+                      <p className="text-[10px] text-amber-600 font-medium flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Este monto reemplazará el total calculado automáticamente.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-white/5" />
+
+            <div className="space-y-5">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 flex items-center gap-1.5">
+                <Info className="h-3.5 w-3.5" /> Textos Técnicos
+              </h3>
               <div className="space-y-2">
                 <Label htmlFor="meta-intro" className="text-[10px] font-bold uppercase tracking-widest text-blue-500 ml-1">Alcance Técnico</Label>
                 <Textarea id="meta-intro" rows={4} className="rounded-2xl border-slate-200 text-sm italic" value={metaForm.introductionText} onChange={e => setMetaForm(f => ({ ...f, introductionText: e.target.value }))} placeholder="Describe el alcance de los trabajos..." />
@@ -1035,6 +1674,10 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
               <Label htmlFor="item-desc" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Descripción del Concepto</Label>
               <Input id="item-desc" className="h-11 rounded-xl" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Detalla el producto o servicio..." />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="item-long" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Descripción ampliada / alcance (impresión)</Label>
+              <Textarea id="item-long" rows={3} className="rounded-xl border-slate-200 text-sm" value={itemForm.longDescription} onChange={e => setItemForm(f => ({ ...f, longDescription: e.target.value }))} placeholder="Opcional: detalle bajo la fila en documento simple" />
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Unidad</Label>
@@ -1056,6 +1699,14 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                 <Input id="item-price" type="number" step="0.01" min="0" className="h-11 rounded-xl font-mono" value={itemForm.unitPrice} onChange={e => setItemForm(f => ({ ...f, unitPrice: e.target.value }))} />
               </div>
             </div>
+            {itemForm.quantity && itemForm.unitPrice && (
+              <div className="flex items-center justify-between px-4 py-3 bg-orange-50 dark:bg-orange-950/20 rounded-2xl border border-orange-200/50">
+                <span className="text-xs font-bold text-orange-700 dark:text-orange-400 uppercase tracking-widest">Subtotal estimado</span>
+                <span className="font-mono font-black text-orange-700 dark:text-orange-400">
+                  {currency} {(parseFloat(itemForm.quantity || '0') * parseFloat(itemForm.unitPrice || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
           </div>
           <DialogFooter className="p-6 bg-slate-50 border-t">
             <Button variant="ghost" className="font-bold text-xs" onClick={() => setItemDialog(false)}>Cancelar</Button>
@@ -1078,6 +1729,10 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
               <Label htmlFor="edit-item-desc" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Descripción del Concepto</Label>
               <Input id="edit-item-desc" className="h-11 rounded-xl" value={editItemForm.description} onChange={e => setEditItemForm(f => ({ ...f, description: e.target.value }))} />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-item-long" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Descripción ampliada / alcance</Label>
+              <Textarea id="edit-item-long" rows={3} className="rounded-xl border-slate-200 text-sm" value={editItemForm.longDescription} onChange={e => setEditItemForm(f => ({ ...f, longDescription: e.target.value }))} />
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Unidad</Label>
@@ -1099,10 +1754,102 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                 <Input id="edit-item-price" type="number" step="0.01" min="0" className="h-11 rounded-xl font-mono" value={editItemForm.unitPrice} onChange={e => setEditItemForm(f => ({ ...f, unitPrice: e.target.value }))} />
               </div>
             </div>
+            {editItemForm.quantity && editItemForm.unitPrice && (
+              <div className="flex items-center justify-between px-4 py-3 bg-blue-50 dark:bg-blue-950/20 rounded-2xl border border-blue-200/50">
+                <span className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-widest">Subtotal estimado</span>
+                <span className="font-mono font-black text-blue-700 dark:text-blue-400">
+                  {currency} {(parseFloat(editItemForm.quantity || '0') * parseFloat(editItemForm.unitPrice || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
           </div>
           <DialogFooter className="p-6 bg-slate-50 border-t">
             <Button variant="ghost" className="font-bold text-xs" onClick={() => setEditItemDialog(false)}>Cancelar</Button>
             <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-8 rounded-xl shadow-lg shadow-blue-500/20" onClick={saveEditItem}>Guardar Cambios</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit section dialog */}
+      <Dialog open={editSectionDialog} onOpenChange={setEditSectionDialog}>
+        <DialogContent className="p-0 border-none shadow-2xl overflow-hidden max-w-md font-jakarta">
+          <DialogHeader className="p-6 bg-slate-900 text-white border-b border-white/10">
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
+              <Pencil className="h-6 w-6 text-blue-500" />
+              Editar Sección
+            </DialogTitle>
+          </DialogHeader>
+          <div className="p-6 space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="edit-sec-name" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Nombre del Grupo <span className="text-red-500">*</span></Label>
+              <Input id="edit-sec-name" className="h-11 rounded-xl" value={editSectionForm.name} onChange={e => setEditSectionForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Materiales Eléctricos" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sec-desc" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Detalle (Opcional)</Label>
+              <Input id="edit-sec-desc" className="h-11 rounded-xl" value={editSectionForm.description} onChange={e => setEditSectionForm(f => ({ ...f, description: e.target.value }))} placeholder="Breve nota sobre esta sección" />
+            </div>
+          </div>
+          <DialogFooter className="p-6 bg-slate-50 border-t">
+            <Button variant="ghost" className="font-bold text-xs" onClick={() => setEditSectionDialog(false)}>Cancelar</Button>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-8 rounded-xl shadow-lg shadow-blue-500/20" onClick={saveEditSection}>Guardar Sección</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pdfIncomplete !== null} onOpenChange={o => { if (!o) setPdfIncomplete(null); }}>
+        <DialogContent className="max-w-lg rounded-2xl font-jakarta">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Falta información para el PDF
+            </DialogTitle>
+          </DialogHeader>
+          <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+            {(pdfIncomplete ?? []).map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" className="font-bold text-xs" onClick={() => setPdfIncomplete(null)}>Cerrar</Button>
+            <Button
+              className="font-bold text-xs bg-slate-900"
+              onClick={() => {
+                const w = pdfIncomplete;
+                setPdfIncomplete(null);
+                downloadQuotationPdf(true);
+                if (w?.length) addToast('PDF generado con advertencias', 'info');
+              }}
+            >
+              Descargar de todos modos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={printWarnings !== null} onOpenChange={o => { if (!o) setPrintWarnings(null); }}>
+        <DialogContent className="max-w-lg rounded-2xl font-jakarta">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Revise antes de imprimir
+            </DialogTitle>
+          </DialogHeader>
+          <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+            {(printWarnings ?? []).map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" className="font-bold text-xs" onClick={() => setPrintWarnings(null)}>Corregir datos</Button>
+            <Button
+              className="font-bold text-xs bg-slate-900"
+              onClick={() => {
+                setPrintWarnings(null);
+                window.print();
+              }}
+            >
+              Imprimir de todos modos
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

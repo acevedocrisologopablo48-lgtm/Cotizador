@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { storage } from '@/lib/firebase';
@@ -320,15 +321,31 @@ export default function HrAttendancesPage() {
                   return (
                     <TableRow key={att.id} className="group hover:bg-slate-50/30 dark:hover:bg-slate-900/30 transition-colors">
                       <TableCell className="pl-6">
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-black text-slate-500 border border-slate-200 dark:border-slate-700">
-                            {emp?.fullName.charAt(0) || '?'}
+                        {emp ? (
+                          <Link
+                            href={`/hr/employees?search=${encodeURIComponent(emp.documentNumber)}`}
+                            className="flex items-center gap-3 group/emp"
+                            title="Ver ficha del empleado"
+                          >
+                            <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-black text-slate-500 border border-slate-200 dark:border-slate-700 group-hover/emp:bg-primary/10 group-hover/emp:text-primary group-hover/emp:border-primary/30 transition-colors">
+                              {emp.fullName.charAt(0)}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900 dark:text-slate-100 group-hover/emp:text-primary transition-colors">{emp.fullName}</span>
+                              <span className="text-[10px] text-slate-400 font-black uppercase tracking-tighter leading-none">{emp.position || 'N/A'}</span>
+                            </div>
+                          </Link>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-black text-slate-500 border border-slate-200 dark:border-slate-700">
+                              ?
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900 dark:text-slate-100">Colaborador Desconocido</span>
+                              <span className="text-[10px] text-slate-400 font-black uppercase tracking-tighter leading-none">N/A</span>
+                            </div>
                           </div>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-slate-900 dark:text-slate-100">{emp?.fullName ?? 'Colaborador Desconocido'}</span>
-                            <span className="text-[10px] text-slate-400 font-black uppercase tracking-tighter leading-none">{emp?.position || 'N/A'}</span>
-                          </div>
-                        </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge 
@@ -352,6 +369,7 @@ export default function HrAttendancesPage() {
                         {att.photoUrl ? (
                           <a href={att.photoUrl} target="_blank" rel="noopener noreferrer" className="inline-block relative">
                             <div className="h-10 w-10 rounded-full border-2 border-white dark:border-slate-900 shadow-md overflow-hidden hover:scale-110 transition-transform">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={att.photoUrl}
                                 alt="foto"

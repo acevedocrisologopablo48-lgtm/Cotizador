@@ -71,6 +71,7 @@ export default function ClientDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [buyerStats, setBuyerStats] = useState<Record<string, number>>({});
+  const [activeTab, setActiveTab] = useState('info');
   const [form, setForm] = useState({
     ruc: '',
     businessName: '',
@@ -351,7 +352,7 @@ export default function ClientDetailPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="info" className="space-y-10">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-10">
         <div className="flex items-center justify-center lg:justify-start overflow-x-auto pb-4 lg:pb-0 scrollbar-hide">
           <TabsList className="bg-slate-900/10 dark:bg-white/5 border border-slate-200 dark:border-white/5 p-2 rounded-[2rem] h-auto backdrop-blur-xl">
             <TabsTrigger value="info" className="rounded-2xl px-10 py-3 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-slate-900 data-[state=active]:text-white dark:data-[state=active]:bg-white dark:data-[state=active]:text-slate-900 transition-all duration-300">
@@ -559,7 +560,7 @@ export default function ClientDetailPage() {
                     </div>
                     <div className="space-y-2">
                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Base de contactos vacía</p>
-                      <Button onClick={() => {}} variant="outline" className="h-10 rounded-xl font-black text-[9px] uppercase tracking-widest border-slate-200">
+                      <Button onClick={() => setActiveTab('contacts')} variant="outline" className="h-10 rounded-xl font-black text-[9px] uppercase tracking-widest border-slate-200">
                         Agregar Primer Contacto
                       </Button>
                     </div>

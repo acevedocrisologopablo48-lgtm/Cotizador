@@ -83,6 +83,15 @@ Configura en Railway:
 - Puerto de escucha (`PORT`) administrado por Railway
 - Proyecto conectado a este repo y rama (`master`)
 
+### Nota sobre `vercel.json`
+
+El despliegue **canónico** del frontend es **Firebase Hosting**.
+Existen dos `vercel.json` (raíz del repo y `packages/frontend/`) sólo
+para soportar previews de Vercel cuando el "Root Directory" del proyecto
+en Vercel sea `/` o `packages/frontend` respectivamente. **No agregues
+lógica de negocio nueva en estos archivos**; mantén ambos sincronizados
+o elimínalos si dejas de usar Vercel.
+
 ## CI/CD en GitHub Actions
 
 Workflows incluidos:

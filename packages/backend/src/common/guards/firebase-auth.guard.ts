@@ -1,8 +1,10 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
 
 @Injectable()
 export class FirebaseAuthGuard implements CanActivate {
+  private readonly logger = new Logger(FirebaseAuthGuard.name);
+
   constructor(private firebase: FirebaseService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -40,6 +42,7 @@ export class FirebaseAuthGuard implements CanActivate {
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
+      this.logger.warn(`Token rechazado: ${error instanceof Error ? error.message : 'Unknown'}`);
       throw new UnauthorizedException('Token inválido o expirado');
     }
   }

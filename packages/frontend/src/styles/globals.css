@@ -4,85 +4,57 @@
 
 @layer base {
   :root {
-    /* FYM Technologies — Light mode (login / auth pages) */
-    --background: 216 20% 96%;
-    --foreground: 220 45% 10%;
+    /* FYM Technologies — Light theme (principal) */
+
+    /* ── Base surfaces ── */
+    --background: 210 28% 97%;       /* #f3f7fc — lienzo principal, azul-gris muy suave */
+    --foreground: 222 47% 11%;       /* #0e1526 — navy profundo, máxima legibilidad */
+
+    /* Cards — fondo blanco puro para contraste con el canvas */
     --card: 0 0% 100%;
-    --card-foreground: 220 45% 10%;
+    --card-foreground: 222 47% 11%;
+
+    /* Popovers y dropdowns flotan encima de las cards */
     --popover: 0 0% 100%;
-    --popover-foreground: 220 45% 10%;
-    --primary: 214 80% 38%;
+    --popover-foreground: 222 47% 11%;
+
+    /* ── Brand color — azul corporativo vibrante ── */
+    --primary: 214 80% 42%;          /* #1474cc */
     --primary-foreground: 0 0% 100%;
-    --secondary: 216 16% 90%;
-    --secondary-foreground: 220 45% 10%;
-    --muted: 216 16% 90%;
-    --muted-foreground: 218 14% 44%;
-    --accent: 36 90% 50%;
+
+    /* ── Superficies secundarias ── */
+    --secondary: 214 24% 92%;        /* #e2eaf5 */
+    --secondary-foreground: 222 47% 11%;
+
+    /* Muted — capa más sutil, fondos de tablas, pills */
+    --muted: 214 22% 93%;            /* #e5ecf6 */
+    --muted-foreground: 215 18% 46%; /* #667290 */
+
+    /* ── Accent — ámbar vibrante para destacar ── */
+    --accent: 36 92% 50%;
     --accent-foreground: 30 55% 14%;
-    --destructive: 2 70% 49%;
+
+    /* ── Semánticos ── */
+    --destructive: 2 70% 48%;
     --destructive-foreground: 0 0% 100%;
-    --success: 157 60% 30%;
+    --success: 157 60% 32%;
     --success-foreground: 0 0% 100%;
-    --warning: 36 90% 50%;
+    --warning: 36 92% 50%;
     --warning-foreground: 30 55% 14%;
     --info: 200 80% 40%;
     --info-foreground: 0 0% 100%;
-    --border: 216 18% 82%;
-    --input: 216 18% 82%;
-    --ring: 214 80% 38%;
+
+    /* ── Estructura ── */
+    --border: 214 22% 86%;           /* #d4dff0 — borde azulado sutil */
+    --input: 214 22% 86%;
+    --ring: 214 80% 42%;
     --radius: 0.5rem;
 
-    /* Sidebar — deep charcoal navy */
-    --sidebar-bg: 220 48% 7%;
-    --sidebar-fg: 216 18% 70%;
-    --sidebar-hover: 220 36% 14%;
-    --sidebar-muted: 218 14% 50%;
-  }
-
-  /* ── Dark mode — harmonized with the navy sidebar ── */
-  .dark {
-    /* Base surfaces — three-layer depth system */
-    --background: 224 20% 7%;        /* #0d1016 — deepest layer, main canvas */
-    --foreground: 215 22% 88%;       /* warm off-white text */
-
-    /* Cards sit one stop above the background */
-    --card: 225 18% 10%;             /* #141820 */
-    --card-foreground: 215 22% 88%;
-
-    /* Popovers float above cards */
-    --popover: 225 18% 13%;
-    --popover-foreground: 215 22% 88%;
-
-    /* Primary — electric blue, legible on dark */
-    --primary: 214 82% 58%;
-    --primary-foreground: 0 0% 100%;
-
-    /* Secondary — muted navy surface */
-    --secondary: 223 18% 17%;
-    --secondary-foreground: 215 22% 76%;
-
-    /* Muted — subtlest surface layer */
-    --muted: 223 18% 14%;
-    --muted-foreground: 218 16% 52%;
-
-    /* Accent — amber stays vivid */
-    --accent: 36 88% 52%;
-    --accent-foreground: 30 55% 14%;
-
-    /* Semantic colors */
-    --destructive: 2 72% 56%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 157 58% 40%;
-    --success-foreground: 0 0% 100%;
-    --warning: 36 88% 52%;
-    --warning-foreground: 30 55% 14%;
-    --info: 200 82% 50%;
-    --info-foreground: 0 0% 100%;
-
-    /* Structural */
-    --border: 223 18% 16%;
-    --input: 223 18% 17%;
-    --ring: 214 82% 58%;
+    /* Sidebar — blanco con texto navy */
+    --sidebar-bg: 0 0% 100%;
+    --sidebar-fg: 222 30% 32%;
+    --sidebar-hover: 214 30% 95%;
+    --sidebar-muted: 215 16% 54%;
   }
 }
 
@@ -222,10 +194,11 @@
 
 /* ─── Premium utility classes ─────────────────────────────── */
 .glass-card {
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid hsl(var(--border));
+  box-shadow: 0 1px 3px 0 hsl(var(--border) / 0.5), 0 4px 16px 0 hsl(214 80% 42% / 0.06);
 }
 
 /* Consistent "settings page" form field styling that matches the design system */
@@ -292,10 +265,10 @@
     padding: 0 !important;
   }
 
-  /* Page setup */
+  /* Page setup — margin: 0 suppresses browser date/title/URL headers & footers */
   @page {
     size: A4 portrait;
-    margin: 15mm 15mm 20mm 15mm;
+    margin: 0;
   }
 
   /* Preserve colors when printing */
@@ -304,8 +277,14 @@
     print-color-adjust: exact !important;
   }
 
-  /* Avoid page breaks inside table rows */
-  tr {
+  /* Avoid page breaks inside table rows and section blocks */
+  tr,
+  .break-inside-avoid {
     page-break-inside: avoid;
+  }
+
+  /* Keep section header with its table */
+  thead {
+    display: table-header-group;
   }
 }

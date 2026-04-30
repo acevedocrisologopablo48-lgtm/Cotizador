@@ -12,9 +12,16 @@ export class FirebaseService implements OnModuleInit {
   constructor(private config: ConfigService) {}
 
   onModuleInit() {
-    const projectId = this.config.get<string>('FIREBASE_PROJECT_ID');
-    const clientEmail = this.config.get<string>('FIREBASE_CLIENT_EMAIL');
-    const privateKey = this.config.get<string>('FIREBASE_PRIVATE_KEY');
+    // Acepta naming canónico (FIREBASE_*) y legado (FB_ADMIN_*) para compatibilidad.
+    const projectId =
+      this.config.get<string>('FIREBASE_PROJECT_ID') ??
+      this.config.get<string>('FB_ADMIN_PROJECT_ID');
+    const clientEmail =
+      this.config.get<string>('FIREBASE_CLIENT_EMAIL') ??
+      this.config.get<string>('FB_ADMIN_CLIENT_EMAIL');
+    const privateKey =
+      this.config.get<string>('FIREBASE_PRIVATE_KEY') ??
+      this.config.get<string>('FB_ADMIN_PRIVATE_KEY');
 
     if (projectId && clientEmail && privateKey) {
       this._app = admin.initializeApp({

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -29,10 +29,12 @@ export default function ProjectsPage() {
   const { token } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [projects, setProjects] = useState<any[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  // Soporta deep-linking desde Dashboard (?status=IN_PROGRESS, etc.)
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);

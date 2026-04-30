@@ -1,0 +1,152 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper functions ───────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.role == 'ADMIN';
+    }
+
+    function isManagerOrAbove() {
+      return isAuthenticated() && request.auth.token.role in ['ADMIN', 'MANAGER'];
+    }
+
+    function isQuotationEditor() {
+      return isAuthenticated() && request.auth.token.role in ['ADMIN', 'MANAGER', 'ENGINEER'];
+    }
+
+    function isAttendanceWriter() {
+      return isAuthenticated() && request.auth.token.role in ['ADMIN', 'MANAGER', 'FIELD_SUPERVISOR', 'ENGINEER'];
+    }
+
+    // ─── User profiles ──────────────────────────────────────
+    match /users/{userId} {
+      // Authenticated users can read all user profiles
+      allow read: if isAuthenticated();
+      // Only admins can create/update/delete user profiles
+      allow write: if isAdmin();
+    }
+
+    // ─── Companies ──────────────────────────────────────────
+    match /companies/{companyId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Contacts ───────────────────────────────────────────
+    match /contacts/{contactId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Agreements ─────────────────────────────────────────
+    match /agreements/{agreementId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Categories ─────────────────────────────────────────
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Supplies (materials, equipment, workforce) ─────────
+    match /supplies/{supplyId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Performance rates ──────────────────────────────────
+    match /performanceRates/{rateId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Risk variable rules ────────────────────────────────
+    match /riskVariableRules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Quotations ─────────────────────────────────────────
+    match /quotations/{quotationId} {
+      allow read: if isAuthenticated();
+      allow write: if isQuotationEditor();
+    }
+
+    // ─── Projects ───────────────────────────────────────────
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Petty cash ─────────────────────────────────────────
+    match /pettyCash/{pettyCashId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── HR: Employees ──────────────────────────────────────
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── HR: Attendances ────────────────────────────────────
+    match /attendances/{attendanceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAttendanceWriter();
+    }
+
+    // ─── HR: Timesheets ─────────────────────────────────────
+    match /timesheets/{timesheetId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── App configuration ──────────────────────────────────
+    match /appConfig/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Backend app-config service persists configuration under "_config".
+    match /_config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ─── Project Tasks (Kanban / Gantt) ────────────────────────
+    // Frontend now consumes mutations through NestJS API only.
+    // Reads/writes are blocked at client SDK level; backend Admin SDK bypasses rules.
+    match /projectTasks/{taskId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // ─── Project Milestones ─────────────────────────────────────
+    match /projectMilestones/{milestoneId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // ─── Project Activity Log (append-only from backend) ────────
+    match /projectActivityLog/{logId} {
+      allow read: if false;
+      allow write: if false; // Only written by backend Admin SDK
+    }
+
+    // ─── Catch-all: deny everything else ────────────────────
+    // This ensures new collections are secure by default.
+    // When adding new collections, add explicit rules above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

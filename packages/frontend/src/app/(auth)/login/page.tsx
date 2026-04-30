@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
@@ -11,8 +11,14 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login } = useAuth();
+  const { login, user, isLoading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace('/dashboard');
+    }
+  }, [isLoading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +43,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex">
       {/* Left panel — brand */}
-      <div className="hidden lg:flex lg:w-[46%] flex-col justify-between bg-[hsl(222,44%,8%)] p-12">
+      <div className="hidden lg:flex lg:w-[46%] flex-col justify-between bg-gradient-to-br from-primary via-blue-700 to-indigo-800 p-12">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-[7px] bg-primary">
             <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
@@ -67,7 +73,7 @@ export default function LoginPage() {
               { label: 'Clientes', desc: 'Gestiona cartera' },
               { label: 'Costos', desc: 'Matriz de precios' },
             ].map((f) => (
-              <div key={f.label} className="rounded-lg border border-white/[0.07] bg-white/[0.04] px-4 py-3">
+              <div key={f.label} className="rounded-lg border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm">
                 <p className="text-[13px] font-semibold text-white/80">{f.label}</p>
                 <p className="text-[11px] text-white/35 mt-0.5">{f.desc}</p>
               </div>

@@ -11,6 +11,8 @@ export enum QuotationStatus {
   DRAFT = 'DRAFT',
   REVIEW = 'REVIEW',
   SENT = 'SENT',
+  FOLLOW_UP = 'FOLLOW_UP',
+  STAND_BY = 'STAND_BY',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   EXPIRED = 'EXPIRED',
@@ -20,10 +22,12 @@ export enum QuotationStatus {
 export const QUOTATION_STATUS_TRANSITIONS: Record<QuotationStatus, QuotationStatus[]> = {
   [QuotationStatus.DRAFT]: [QuotationStatus.REVIEW],
   [QuotationStatus.REVIEW]: [QuotationStatus.DRAFT, QuotationStatus.SENT],
-  [QuotationStatus.SENT]: [QuotationStatus.APPROVED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED],
+  [QuotationStatus.SENT]: [QuotationStatus.APPROVED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED, QuotationStatus.FOLLOW_UP, QuotationStatus.STAND_BY],
+  [QuotationStatus.FOLLOW_UP]: [QuotationStatus.APPROVED, QuotationStatus.REJECTED, QuotationStatus.STAND_BY, QuotationStatus.SENT],
+  [QuotationStatus.STAND_BY]: [QuotationStatus.FOLLOW_UP, QuotationStatus.SENT, QuotationStatus.REJECTED],
   [QuotationStatus.APPROVED]: [QuotationStatus.INVOICED],
-  [QuotationStatus.REJECTED]: [QuotationStatus.DRAFT],
-  [QuotationStatus.EXPIRED]: [QuotationStatus.DRAFT],
+  [QuotationStatus.REJECTED]: [QuotationStatus.DRAFT, QuotationStatus.FOLLOW_UP],
+  [QuotationStatus.EXPIRED]: [QuotationStatus.DRAFT, QuotationStatus.FOLLOW_UP],
   [QuotationStatus.INVOICED]: [],
 };
 
@@ -184,4 +188,61 @@ export enum TimesheetStatus {
   PRESENT = 'PRESENT',
   INCOMPLETE = 'INCOMPLETE',
   ABSENT = 'ABSENT',
+}
+
+// ─── Gestión de Proyectos (Tareas, Hitos, Kanban) ────────────────────────────
+
+export enum TaskStatus {
+  TODO = 'TODO',
+  IN_PROGRESS = 'IN_PROGRESS',
+  IN_REVIEW = 'IN_REVIEW',
+  DONE = 'DONE',
+}
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  [TaskStatus.TODO]: 'Por Hacer',
+  [TaskStatus.IN_PROGRESS]: 'En Progreso',
+  [TaskStatus.IN_REVIEW]: 'En Revisión',
+  [TaskStatus.DONE]: 'Completado',
+};
+
+export enum TaskPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  URGENT = 'URGENT',
+}
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  [TaskPriority.LOW]: 'Baja',
+  [TaskPriority.MEDIUM]: 'Media',
+  [TaskPriority.HIGH]: 'Alta',
+  [TaskPriority.URGENT]: 'Urgente',
+};
+
+export enum MilestoneStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  OVERDUE = 'OVERDUE',
+}
+
+export const MILESTONE_STATUS_LABELS: Record<MilestoneStatus, string> = {
+  [MilestoneStatus.PENDING]: 'Pendiente',
+  [MilestoneStatus.COMPLETED]: 'Completado',
+  [MilestoneStatus.OVERDUE]: 'Vencido',
+};
+
+export enum ProjectActivityAction {
+  TASK_CREATED = 'TASK_CREATED',
+  TASK_UPDATED = 'TASK_UPDATED',
+  TASK_STATUS_CHANGED = 'TASK_STATUS_CHANGED',
+  TASK_ASSIGNED = 'TASK_ASSIGNED',
+  TASK_DELETED = 'TASK_DELETED',
+  MILESTONE_CREATED = 'MILESTONE_CREATED',
+  MILESTONE_COMPLETED = 'MILESTONE_COMPLETED',
+  MILESTONE_UPDATED = 'MILESTONE_UPDATED',
+  PROJECT_STATUS_CHANGED = 'PROJECT_STATUS_CHANGED',
+  PROJECT_UPDATED = 'PROJECT_UPDATED',
+  MEMBER_ADDED = 'MEMBER_ADDED',
+  MEMBER_REMOVED = 'MEMBER_REMOVED',
 }

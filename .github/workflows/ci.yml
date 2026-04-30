@@ -28,6 +28,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build shared primero porque backend/frontend importan @fym/shared compilado.
+      - name: Build shared
+        run: pnpm --filter shared build
+
+      # Lint blocking: typecheck en backend + next lint + tsc en frontend.
+      # Si esto falla, el CI no pasa al build (fail fast).
+      - name: Lint & typecheck
+        run: pnpm -r --filter "!shared" --parallel lint:check
+        env:
+          NEXT_PUBLIC_API_URL: https://example.invalid/api/v1
+          NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyCIPlaceholderKey000000000000000000
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: example.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: example-project
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: example-project.appspot.com
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "1234567890"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:1234567890:web:abcdef123456"
+
       - name: Build shared + backend + frontend
         run: pnpm build
         env:

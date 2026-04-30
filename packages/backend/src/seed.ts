@@ -4,9 +4,10 @@ import * as path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-const projectId = process.env.FIREBASE_PROJECT_ID;
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const projectId = process.env.FIREBASE_PROJECT_ID ?? process.env.FB_ADMIN_PROJECT_ID;
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL ?? process.env.FB_ADMIN_CLIENT_EMAIL;
+const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY ?? process.env.FB_ADMIN_PRIVATE_KEY;
+const privateKey = rawPrivateKey?.replace(/\\n/g, '\n');
 
 if (!projectId || !clientEmail || !privateKey) {
   console.warn(`Faltan credenciales de Firebase en el .env. projectId: ${!!projectId}, clientEmail: ${!!clientEmail}, privateKey: ${!!privateKey}`);

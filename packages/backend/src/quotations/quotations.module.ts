@@ -6,6 +6,7 @@ import { QuotationsService } from './services/quotations.service';
 import { QuotationSectionsService } from './services/quotation-sections.service';
 import { QuotationItemsService } from './services/quotation-items.service';
 import { QuotationCalculatorService } from './services/quotation-calculator.service';
+import { QuotationPdfService } from './services/quotation-pdf.service';
 import { AppConfigModule } from '../app-config/app-config.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { AppConfigModule } from '../app-config/app-config.module';
     QuotationSectionsService,
     QuotationItemsService,
     QuotationCalculatorService,
+    QuotationPdfService,
   ],
   exports: [QuotationsService],
 })

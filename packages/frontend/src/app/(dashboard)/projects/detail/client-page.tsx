@@ -15,9 +15,9 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
-import { ArrowLeft, Plus, DollarSign, Users, Wrench, Pencil } from 'lucide-react';
-
-
+import { ArrowLeft, Plus, DollarSign, Users, Wrench, Pencil, FileText } from 'lucide-react';
+import Link from 'next/link';
+import { ProjectManagementModule } from './components/ProjectManagementModule';
 
 const EXPENSE_CATEGORIES = [
   'MATERIAL', 'EQUIPMENT', 'LABOR', 'SUBCONTRACT', 'TRANSPORT',
@@ -32,9 +32,14 @@ const WORKER_ROLES = [
 export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) {
   const searchParams = useSearchParams();
   const id = idProp ?? searchParams.get('id');
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
+  // Permisos derivados del rol del usuario (debe coincidir con el guard del backend).
+  const role = user?.role;
+  const canManage = role === 'ADMIN' || role === 'MANAGER';
+  const canRegisterField =
+    role === 'ADMIN' || role === 'MANAGER' || role === 'ENGINEER' || role === 'FIELD_SUPERVISOR';
   const [project, setProject] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -92,18 +97,39 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
 
   const saveProject = async () => {
     try {
-      await api.patch(`/projects/${id}`, projectForm, token!);
+      await api.put(`/projects/${id}`, projectForm, token!);
       addToast('Proyecto actualizado', 'success');
       setEditProjectDialog(false);
       load();
     } catch (e: any) { addToast(e.message, 'error'); }
   };
 
+  // Helper: convierte string → número finito ≥ 0 o null si es inválido.
+  const parsePositive = (raw: string | number | undefined | null): number | null => {
+    if (raw === '' || raw === null || raw === undefined) return null;
+    const n = typeof raw === 'number' ? raw : parseFloat(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+  };
+
   const addExpense = async () => {
+    const amount = parsePositive(expenseForm.amount);
+    if (amount === null || amount <= 0) {
+      addToast('Ingresa un monto mayor a 0', 'error');
+      return;
+    }
+    if (!expenseForm.description.trim()) {
+      addToast('La descripción es obligatoria', 'error');
+      return;
+    }
+    if (!expenseForm.expenseDate) {
+      addToast('La fecha del gasto es obligatoria', 'error');
+      return;
+    }
     try {
       await api.post(`/projects/${id}/expenses`, {
         ...expenseForm,
-        amount: parseFloat(expenseForm.amount),
+        amount,
         expenseDate: new Date(expenseForm.expenseDate).toISOString(),
       }, token!);
       addToast('Gasto registrado', 'success');
@@ -113,13 +139,38 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
   };
 
   const addWorkforce = async () => {
+    const dailyRate = parsePositive(workforceForm.dailyRate);
+    const overtimeRate = parsePositive(workforceForm.overtimeRate) ?? 0;
+    const hoursRegular = parsePositive(workforceForm.hoursRegular) ?? 0;
+    const hoursOvertime = parsePositive(workforceForm.hoursOvertime) ?? 0;
+
+    if (!workforceForm.workerName.trim()) {
+      addToast('El nombre del trabajador es obligatorio', 'error');
+      return;
+    }
+    if (dailyRate === null || dailyRate <= 0) {
+      addToast('Ingresa una tarifa diaria mayor a 0', 'error');
+      return;
+    }
+    if (hoursRegular + hoursOvertime <= 0) {
+      addToast('Las horas trabajadas deben ser mayores a 0', 'error');
+      return;
+    }
+    if (hoursRegular + hoursOvertime > 24) {
+      addToast('Las horas no pueden superar 24 por jornada', 'error');
+      return;
+    }
+    if (!workforceForm.workDate) {
+      addToast('La fecha de la jornada es obligatoria', 'error');
+      return;
+    }
     try {
       await api.post(`/projects/${id}/workforce`, {
         ...workforceForm,
-        dailyRate: parseFloat(workforceForm.dailyRate),
-        overtimeRate: parseFloat(workforceForm.overtimeRate),
-        hoursRegular: parseFloat(workforceForm.hoursRegular),
-        hoursOvertime: parseFloat(workforceForm.hoursOvertime),
+        dailyRate,
+        overtimeRate,
+        hoursRegular,
+        hoursOvertime,
         workDate: new Date(workforceForm.workDate).toISOString(),
       }, token!);
       addToast('Registro agregado', 'success');
@@ -129,10 +180,23 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
   };
 
   const addEquipment = async () => {
+    const dailyRate = parsePositive(equipmentForm.dailyRate);
+    if (!equipmentForm.equipmentName.trim()) {
+      addToast('El nombre del equipo es obligatorio', 'error');
+      return;
+    }
+    if (dailyRate === null || dailyRate <= 0) {
+      addToast('Ingresa una tarifa mayor a 0', 'error');
+      return;
+    }
+    if (!equipmentForm.startDate) {
+      addToast('La fecha de inicio es obligatoria', 'error');
+      return;
+    }
     try {
       await api.post(`/projects/${id}/equipment`, {
         ...equipmentForm,
-        dailyRate: parseFloat(equipmentForm.dailyRate),
+        dailyRate,
         startDate: new Date(equipmentForm.startDate).toISOString(),
       }, token!);
       addToast('Equipo registrado', 'success');
@@ -174,77 +238,97 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
                 {project.name}
               </h1>
               {project.company && (
-                <div className="flex items-center gap-3 mt-2">
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
                   <div className="px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-[10px] font-black text-primary uppercase tracking-widest">
                     Cliente Partner
                   </div>
                   <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">{project.company.tradeName || project.company.businessName || project.company.name}</p>
                 </div>
               )}
+              {project.quotationId && (
+                <div className="mt-3">
+                  <Link
+                    href={`/quotations/detail?id=${project.quotationId}`}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400"
+                    title="Ver cotización origen"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    {project.quotation?.quotationNumber
+                      ? `Cotización ${project.quotation.quotationNumber}`
+                      : 'Ver cotización origen'}
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-950/20 p-2 rounded-[1.5rem] border border-white/[0.05] backdrop-blur-xl self-start md:self-center shadow-2xl">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-10 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5"
-            onClick={openEditProject}
-          >
-            <Pencil className="mr-2 h-4 w-4" />
-            Ajustar
-          </Button>
-
-          <div className="w-px h-6 bg-white/5 mx-1 hidden sm:block" />
-
-          {project.status === 'PLANNING' && (
+        {canManage ? (
+          <div className="flex items-center gap-3 bg-slate-950/20 p-2 rounded-[1.5rem] border border-white/[0.05] backdrop-blur-xl self-start md:self-center shadow-2xl">
             <Button 
+              variant="ghost" 
               size="sm" 
-              className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-primary/20 hover:opacity-90"
-              onClick={() => updateStatus('IN_PROGRESS')}
+              className="h-10 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5"
+              onClick={openEditProject}
             >
-              Lanzar Ejecución
+              <Pencil className="mr-2 h-4 w-4" />
+              Ajustar
             </Button>
-          )}
-          {project.status === 'IN_PROGRESS' && (
-            <div className="flex gap-2">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-10 px-6 rounded-xl text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 font-black text-[10px] uppercase tracking-widest"
-                onClick={() => updateStatus('PAUSED')}
-              >
-                Pausar
-              </Button>
+
+            <div className="w-px h-6 bg-white/5 mx-1 hidden sm:block" />
+
+            {project.status === 'PLANNING' && (
               <Button 
                 size="sm" 
-                className="h-10 px-8 rounded-xl bg-emerald-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:opacity-90"
-                onClick={() => updateStatus('COMPLETED')}
+                className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-primary/20 hover:opacity-90"
+                onClick={() => updateStatus('IN_PROGRESS')}
               >
-                Finalizar
+                Lanzar Ejecución
               </Button>
-            </div>
-          )}
-          {project.status === 'PAUSED' && (
-            <Button 
-              size="sm" 
-              className="h-10 px-8 rounded-xl bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:opacity-90"
-              onClick={() => updateStatus('IN_PROGRESS')}
-            >
-              Reanudar Flujo
-            </Button>
-          )}
-          {project.status === 'COMPLETED' && (
-            <Button 
-              size="sm" 
-              className="h-10 px-8 rounded-xl bg-slate-700 text-white font-black text-[10px] uppercase tracking-widest shadow-xl hover:opacity-90"
-              onClick={() => updateStatus('CLOSED')}
-            >
-              Cerrar Proyecto
-            </Button>
-          )}
-        </div>
+            )}
+            {project.status === 'IN_PROGRESS' && (
+              <div className="flex gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-10 px-6 rounded-xl text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 font-black text-[10px] uppercase tracking-widest"
+                  onClick={() => updateStatus('PAUSED')}
+                >
+                  Pausar
+                </Button>
+                <Button 
+                  size="sm" 
+                  className="h-10 px-8 rounded-xl bg-emerald-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:opacity-90"
+                  onClick={() => updateStatus('COMPLETED')}
+                >
+                  Finalizar
+                </Button>
+              </div>
+            )}
+            {project.status === 'PAUSED' && (
+              <Button 
+                size="sm" 
+                className="h-10 px-8 rounded-xl bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:opacity-90"
+                onClick={() => updateStatus('IN_PROGRESS')}
+              >
+                Reanudar Flujo
+              </Button>
+            )}
+            {project.status === 'COMPLETED' && (
+              <Button 
+                size="sm" 
+                className="h-10 px-8 rounded-xl bg-slate-700 text-white font-black text-[10px] uppercase tracking-widest shadow-xl hover:opacity-90"
+                onClick={() => updateStatus('CLOSED')}
+              >
+                Cerrar Proyecto
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="self-start md:self-center px-4 py-2 rounded-xl bg-slate-950/20 border border-white/[0.05] text-[10px] font-black uppercase tracking-widest text-slate-500">
+            Sólo lectura
+          </div>
+        )}
       </div>
 
       {/* Industrial Summary Metrics */}
@@ -346,6 +430,10 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
       <Tabs defaultValue="expenses" className="w-full space-y-8">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <TabsList className="bg-slate-950/20 border border-white/[0.05] p-1.5 rounded-2xl h-auto self-start">
+            <TabsTrigger value="management" className="rounded-xl px-8 py-3 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
+              <FileText className="mr-2 h-4 w-4" />
+              Gestión de Proyecto
+            </TabsTrigger>
             <TabsTrigger value="expenses" className="rounded-xl px-8 py-3 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
               <DollarSign className="mr-2 h-4 w-4" />
               Insumos & Gastos
@@ -360,36 +448,42 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex gap-4">
-            <TabsContent value="expenses" className="m-0">
-              <Button 
-                onClick={() => { setExpenseForm({ expenseCategory: 'MATERIAL', description: '', amount: '', supplierName: '', documentType: 'NONE', documentNumber: '', paymentMethod: 'CASH', expenseDate: new Date().toISOString().split('T')[0] }); setExpenseDialog(true); }}
-                className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Registrar Gasto
-              </Button>
-            </TabsContent>
-            <TabsContent value="workforce" className="m-0">
-              <Button 
-                onClick={() => { setWorkforceForm({ workerName: '', workerRole: 'OPERARIO', workDate: new Date().toISOString().split('T')[0], hoursRegular: '8', hoursOvertime: '0', dailyRate: '', overtimeRate: '0' }); setWorkforceDialog(true); }}
-                className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Nueva Jornada
-              </Button>
-            </TabsContent>
-            <TabsContent value="equipment" className="m-0">
-              <Button 
-                onClick={() => { setEquipmentForm({ equipmentName: '', supplierName: '', rentalType: 'DAILY', startDate: new Date().toISOString().split('T')[0], dailyRate: '' }); setEquipmentDialog(true); }}
-                className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Vincular Activo
-              </Button>
-            </TabsContent>
-          </div>
+          {canRegisterField && (
+            <div className="flex gap-4">
+              <TabsContent value="expenses" className="m-0">
+                <Button 
+                  onClick={() => { setExpenseForm({ expenseCategory: 'MATERIAL', description: '', amount: '', supplierName: '', documentType: 'NONE', documentNumber: '', paymentMethod: 'CASH', expenseDate: new Date().toISOString().split('T')[0] }); setExpenseDialog(true); }}
+                  className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
+                >
+                  <Plus className="mr-2 h-5 w-5" />
+                  Registrar Gasto
+                </Button>
+              </TabsContent>
+              <TabsContent value="workforce" className="m-0">
+                <Button 
+                  onClick={() => { setWorkforceForm({ workerName: '', workerRole: 'OPERARIO', workDate: new Date().toISOString().split('T')[0], hoursRegular: '8', hoursOvertime: '0', dailyRate: '', overtimeRate: '0' }); setWorkforceDialog(true); }}
+                  className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
+                >
+                  <Plus className="mr-2 h-5 w-5" />
+                  Nueva Jornada
+                </Button>
+              </TabsContent>
+              <TabsContent value="equipment" className="m-0">
+                <Button 
+                  onClick={() => { setEquipmentForm({ equipmentName: '', supplierName: '', rentalType: 'DAILY', startDate: new Date().toISOString().split('T')[0], dailyRate: '' }); setEquipmentDialog(true); }}
+                  className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
+                >
+                  <Plus className="mr-2 h-5 w-5" />
+                  Vincular Activo
+                </Button>
+              </TabsContent>
+            </div>
+          )}
         </div>
+
+        <TabsContent value="management" className="mt-0 animate-in fade-in slide-in-from-left-4 duration-500 focus-visible:outline-none">
+          <ProjectManagementModule projectId={id!} />
+        </TabsContent>
 
         <TabsContent value="expenses" className="mt-0 animate-in fade-in slide-in-from-left-4 duration-500 focus-visible:outline-none">
           <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden">

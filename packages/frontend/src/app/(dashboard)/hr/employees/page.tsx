@@ -75,10 +75,22 @@ export default function HrEmployeesPage() {
     }
   }, [token, addToast]);
 
+  // Lectura inicial de ?search= en la URL para deep-link desde otros módulos (ej: asistencias).
+  // Se hace en useEffect (client-only) para evitar requerir Suspense con useSearchParams en SSG.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const initial = params.get('search');
+    if (initial) {
+      setSearch(initial);
+      setStatusFilter('ALL');
+    }
+  }, []);
+
   useEffect(() => {
     if (token) loadEmployees(search || undefined, statusFilter);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, search, statusFilter]);
 
   // Debounced search
   const handleSearch = (val: string) => {

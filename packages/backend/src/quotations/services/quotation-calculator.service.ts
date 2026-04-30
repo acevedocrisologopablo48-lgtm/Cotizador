@@ -41,7 +41,14 @@ export class QuotationCalculatorService {
     const subtotal = grandSubtotal + geAmount + profitAmount;
     const igvPercentage = Number(quotation.igvPercentage || 18);
     const igvAmount = (subtotal * igvPercentage) / 100;
-    const total = subtotal + igvAmount;
+    const computedTotal = subtotal + igvAmount;
+
+    // If a manual override is set, use it as the final total.
+    // The computed breakdown (subtotal, igv) is still stored for reference.
+    const manualOverride = quotation.manualTotalOverride;
+    const total = (manualOverride !== undefined && manualOverride !== null && Number(manualOverride) >= 0)
+      ? Number(manualOverride)
+      : computedTotal;
 
     batch.update(qRef, { subtotal, igv: igvAmount, igvAmount, total });
     await batch.commit();

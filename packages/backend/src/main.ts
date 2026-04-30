@@ -1,8 +1,27 @@
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+
+const bootstrapLogger = new Logger('Bootstrap');
+
+function buildAllowedOrigins(): Array<string | RegExp> {
+  const env = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const baseline: Array<string | RegExp> = [
+    'http://localhost:3000',
+    'https://cotiza-luis.web.app',
+    'https://cotiza-luis.firebaseapp.com',
+    'https://fym-cotizaciones.vercel.app',
+    /^https:\/\/fym-cotizaciones-.*\.vercel\.app$/,
+  ];
+
+  return Array.from(new Set([...baseline, ...env]));
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -10,13 +29,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-    origin: [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-      'https://cotiza-luis.web.app',
-      'https://cotiza-luis.firebaseapp.com',
-      'https://fym-cotizaciones.vercel.app',
-      /^https:\/\/fym-cotizaciones-.*\.vercel\.app$/,
-    ],
+    origin: buildAllowedOrigins(),
     credentials: true,
   });
 
@@ -41,8 +54,8 @@ async function bootstrap() {
 
   const port = process.env.PORT || process.env.BACKEND_PORT || 3001;
   await app.listen(port);
-  console.log(`🚀 Cotizador API running on http://localhost:${port}`);
-  console.log(`📄 Swagger docs: http://localhost:${port}/api/docs`);
+  bootstrapLogger.log(`Cotizador API running on http://localhost:${port}`);
+  bootstrapLogger.log(`Swagger docs: http://localhost:${port}/api/docs`);
 }
 
 bootstrap();

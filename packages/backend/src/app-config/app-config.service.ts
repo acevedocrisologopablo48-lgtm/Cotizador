@@ -11,6 +11,13 @@ const DEFAULT_QUOTATION_TYPES = [
   'Tableros',
 ];
 
+function toNumberWithDefault(value: unknown, defaultValue: number, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < min || n > max) return defaultValue;
+  return n;
+}
+
 @Injectable()
 export class AppConfigService {
   constructor(private firebase: FirebaseService) {}
@@ -78,8 +85,8 @@ export class AppConfigService {
       legalRepresentative: data.legalRepresentative ?? '',
       legalRepresentativeRole: data.legalRepresentativeRole ?? '',
       defaultCurrency: data.defaultCurrency ?? 'PEN',
-      defaultValidityDays: Number(data.defaultValidityDays) || 15,
-      defaultIgvPercentage: Number(data.defaultIgvPercentage) || 18,
+      defaultValidityDays: toNumberWithDefault(data.defaultValidityDays, 15, 0, 365),
+      defaultIgvPercentage: toNumberWithDefault(data.defaultIgvPercentage, 18, 0, 100),
       signatureUrl: data.signatureUrl ?? '',
       updatedAt: new Date(),
     };

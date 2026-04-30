@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 export default function DashboardPage() {
   const { user, token } = useAuth();
   const router = useRouter();
-  const [stats, setStats] = useState({ quotations: 0, projects: 0, clients: 0, supplies: 0 });
+  const [stats, setStats] = useState({ quotations: 0, projectsActive: 0, clients: 0, supplies: 0 });
   const [recentQuotations, setRecentQuotations] = useState<any[]>([]);
   const [recentProjects, setRecentProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,12 +22,13 @@ export default function DashboardPage() {
     Promise.all([
       api.get<any>('/quotations?pageSize=5', token).catch(() => ({ data: [], meta: { total: 0 } })),
       api.get<any>('/projects?pageSize=5', token).catch(() => ({ data: [], meta: { total: 0 } })),
+      api.get<any>('/projects?pageSize=1&status=IN_PROGRESS', token).catch(() => ({ meta: { total: 0 } })),
       api.get<any>('/companies?pageSize=1', token).catch(() => ({ meta: { total: 0 } })),
       api.get<any>('/supplies?pageSize=1', token).catch(() => ({ meta: { total: 0 } })),
-    ]).then(([q, p, c, s]) => {
+    ]).then(([q, p, pActive, c, s]) => {
       setStats({
         quotations: q.meta?.total ?? 0,
-        projects: p.meta?.total ?? 0,
+        projectsActive: pActive.meta?.total ?? 0,
         clients: c.meta?.total ?? 0,
         supplies: s.meta?.total ?? 0,
       });
@@ -40,39 +41,43 @@ export default function DashboardPage() {
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
   const firstName = user?.fullName?.split(' ')[0] ?? '';
 
+  // Cards con deep-linking a vistas filtradas cuando aporta foco operativo:
+  // - "Cotizaciones" → todas (lista general)
+  // - "Proyectos" → en ejecución (status=IN_PROGRESS)
+  // - "Clientes" / "Insumos" → listas generales
   const statCards = [
     { label: 'Cotizaciones', value: stats.quotations, icon: FileText, href: '/quotations', color: 'blue' },
-    { label: 'Proyectos', value: stats.projects, icon: FolderKanban, href: '/projects', color: 'sky' },
+    { label: 'Proyectos en ejecución', value: stats.projectsActive, icon: FolderKanban, href: '/projects?status=IN_PROGRESS', color: 'sky' },
     { label: 'Clientes', value: stats.clients, icon: Users, href: '/clients', color: 'amber' },
     { label: 'Insumos', value: stats.supplies, icon: Package, href: '/pricing', color: 'emerald' },
   ];
   const cardColorClass: Record<string, { wrap: string; icon: string; glow: string }> = {
     blue: {
-      wrap: 'bg-blue-500/10 border-blue-500/20',
-      icon: 'text-blue-400',
-      glow: 'bg-blue-500/10',
+      wrap: 'bg-blue-50 border-blue-200',
+      icon: 'text-blue-600',
+      glow: 'bg-blue-100/60',
     },
     sky: {
-      wrap: 'bg-sky-500/10 border-sky-500/20',
-      icon: 'text-sky-400',
-      glow: 'bg-sky-500/10',
+      wrap: 'bg-sky-50 border-sky-200',
+      icon: 'text-sky-600',
+      glow: 'bg-sky-100/60',
     },
     amber: {
-      wrap: 'bg-amber-500/10 border-amber-500/20',
-      icon: 'text-amber-400',
-      glow: 'bg-amber-500/10',
+      wrap: 'bg-amber-50 border-amber-200',
+      icon: 'text-amber-600',
+      glow: 'bg-amber-100/60',
     },
     emerald: {
-      wrap: 'bg-emerald-500/10 border-emerald-500/20',
-      icon: 'text-emerald-400',
-      glow: 'bg-emerald-500/10',
+      wrap: 'bg-emerald-50 border-emerald-200',
+      icon: 'text-emerald-600',
+      glow: 'bg-emerald-100/60',
     },
   };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header with Dynamic Greeting */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-slate-200/70 dark:border-slate-800/70">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-border">
         <div className="space-y-2">
           <div className="flex items-center gap-3 mb-2">
             <div className="relative flex h-3 w-3">

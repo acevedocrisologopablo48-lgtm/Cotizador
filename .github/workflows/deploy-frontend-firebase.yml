@@ -1,4 +1,4 @@
-name: Deploy Frontend to Firebase Hosting
+name: Deploy to Firebase (Hosting + API + rules)
 
 on:
   push:
@@ -67,15 +67,15 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build shared + frontend static export
+      - name: Build shared + backend + frontend (export estático)
         if: steps.verify.outputs.ready == 'true'
-        run: pnpm --filter shared build && pnpm --filter frontend build
+        run: pnpm build
 
-      - name: Deploy to Firebase Hosting
+      - name: Deploy Firebase (hosting, functions, firestore, storage)
         if: steps.verify.outputs.ready == 'true'
         uses: w9jds/firebase-action@v13.35.1
         with:
-          args: deploy --only hosting --project ${{ env.FIREBASE_PROJECT_ID }}
+          args: deploy --only hosting,functions,firestore,storage --project ${{ env.FIREBASE_PROJECT_ID }}
         env:
           FIREBASE_TOKEN: ${{ env.FIREBASE_TOKEN }}
 

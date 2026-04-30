@@ -139,10 +139,12 @@ export default function ClientsPage() {
       {/* Summary Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total Empresas', value: meta.total, icon: Building2, color: 'indigo' },
-          { label: 'Clientes Activos', value: companies.filter(c => c.isActive).length, icon: CheckCircle2, color: 'emerald' },
-          { label: 'Cotizaciones', value: companies.reduce((acc, c) => acc + (c._count?.quotations || 0), 0), icon: FileText, color: 'amber' },
-          { label: 'Proyectos', value: companies.reduce((acc, c) => acc + (c._count?.projects || 0), 0), icon: Briefcase, color: 'blue' }
+          // Backend ya filtra companies por isActive==true: meta.total YA representa
+          // el total de clientes activos. No recalcular sobre la página visible.
+          { label: 'Clientes Activos', value: meta.total, icon: CheckCircle2, color: 'emerald' },
+          { label: 'En esta vista', value: companies.length, icon: Building2, color: 'indigo' },
+          { label: 'Cotizaciones (vista)', value: companies.reduce((acc, c) => acc + (c._count?.quotations || 0), 0), icon: FileText, color: 'amber' },
+          { label: 'Proyectos (vista)', value: companies.reduce((acc, c) => acc + (c._count?.projects || 0), 0), icon: Briefcase, color: 'blue' }
         ].map((stat, i) => (
           <Card key={i} className="group relative border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-sm hover:shadow-md transition-all duration-300 rounded-2xl overflow-hidden">
             <CardContent className="p-5 flex items-center gap-4">
@@ -294,6 +296,8 @@ export default function ClientsPage() {
                           size="icon"
                           className="h-9 w-9 rounded-xl text-slate-400 hover:text-destructive hover:bg-destructive/5"
                           onClick={() => setDeleteTarget(company)}
+                          title="Desactivar cliente"
+                          aria-label="Desactivar cliente"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -345,20 +349,20 @@ export default function ClientsPage() {
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
               <AlertTriangle className="h-5 w-5" />
-              Eliminar Cliente
+              Desactivar Cliente
             </DialogTitle>
           </DialogHeader>
           <div className="py-2 space-y-1">
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              ¿Estás seguro de que deseas eliminar el cliente?
+              ¿Confirmas desactivar este cliente? Dejará de aparecer en listas y selecciones, pero su historial (cotizaciones, proyectos, contactos) se conserva intacto.
             </p>
             <p className="font-bold text-slate-900 dark:text-slate-100">
               {deleteTarget?.tradeName || deleteTarget?.businessName}
             </p>
             <p className="text-xs text-slate-500 pt-1">
-              Esta acción desactivará el registro. Los datos históricos se conservarán.
+              Podrás reactivarlo más adelante desde la base de datos.
             </p>
           </div>
           <DialogFooter>
@@ -366,7 +370,7 @@ export default function ClientsPage() {
               Cancelar
             </Button>
             <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? 'Eliminando…' : 'Eliminar'}
+              {isDeleting ? 'Desactivando…' : 'Desactivar'}
             </Button>
           </DialogFooter>
         </DialogContent>

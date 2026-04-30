@@ -23,6 +23,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const resp = exceptionResponse as Record<string, any>;
         message = resp.message || message;
         error = resp.error || error;
+        const extra = { ...resp };
+        delete extra.statusCode;
+        delete extra.message;
+        delete extra.error;
+        response.status(status).json({
+          statusCode: status,
+          message,
+          error,
+          timestamp: new Date().toISOString(),
+          ...extra,
+        });
+        return;
       }
     } else {
       this.logger.error('Unhandled exception:', exception instanceof Error ? exception.stack : String(exception));

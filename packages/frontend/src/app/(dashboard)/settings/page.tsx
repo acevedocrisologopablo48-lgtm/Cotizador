@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { storage } from '@/lib/firebase';
@@ -68,16 +68,17 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
     loadQuotationTypes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const loadQuotationTypes = async () => {
+  const loadQuotationTypes = useCallback(async () => {
     try {
       const data = await api.get<string[]>('/config/quotation-types', token ?? undefined);
       setQuotationTypes(data || []);
     } catch {
       // non-critical, skip
     }
-  };
+  }, [token]);
 
   const addQtType = () => {
     const t = newQtType.trim();
@@ -100,7 +101,7 @@ export default function SettingsPage() {
     }
   };
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const data = await api.get<CompanySettings>('/config/company', token ?? undefined);
       setSettings(data);
@@ -109,7 +110,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, addToast]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -269,6 +270,7 @@ export default function SettingsPage() {
             <CardContent className="p-8 pt-0 space-y-6">
               <div className="relative aspect-video w-full overflow-hidden rounded-3xl border-2 border-dashed border-white/5 bg-slate-950/40 flex items-center justify-center group/img hover:border-primary/30 transition-colors duration-500">
                 {settings.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={settings.logoUrl} alt="Logo" className="h-full w-full object-contain p-10 transition-transform duration-700 group-hover/img:scale-105" />
                 ) : (
                   <div className="flex flex-col items-center gap-4">
@@ -321,6 +323,7 @@ export default function SettingsPage() {
             <CardContent className="p-8 pt-0 space-y-6">
               <div className="relative aspect-video w-full overflow-hidden rounded-3xl border-2 border-dashed border-white/5 bg-slate-950/40 flex items-center justify-center group/img hover:border-indigo-500/30 transition-colors duration-500">
                 {settings.signatureUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={settings.signatureUrl} alt="Firma" className="h-full w-full object-contain p-10 transition-transform duration-700 group-hover/img:scale-105" />
                 ) : (
                   <div className="flex flex-col items-center gap-4">

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, DefaultValuePipe, Delete, Get, ParseIntPipe, Patch, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { FirebaseAuthGuard, RolesGuard } from '../../common/guards';
 import { Roles } from '../../common/decorators';
 import { ProjectsService } from '../services/projects.service';
@@ -11,14 +11,14 @@ export class ProjectsController {
   @Get()
   @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR', 'VIEWER')
   findAll(
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('pageSize', new DefaultValuePipe(20), ParseIntPipe) pageSize: number,
     @Query('search') search?: string,
     @Query('status') status?: string,
   ) {
     return this.projectsService.findAll({
-      page: page ? parseInt(page) : undefined,
-      pageSize: pageSize ? parseInt(pageSize) : undefined,
+      page,
+      pageSize,
       search,
       status,
     });
@@ -34,6 +34,12 @@ export class ProjectsController {
   @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR', 'VIEWER')
   getSummary(@Param('id') id: string) {
     return this.projectsService.getSummary(id);
+  }
+
+  @Post()
+  @Roles('ADMIN', 'MANAGER')
+  create(@Body() dto: any) {
+    return this.projectsService.create(dto);
   }
 
   @Post('from-quotation/:quotationId')

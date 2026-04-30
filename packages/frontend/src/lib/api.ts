@@ -64,6 +64,132 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
   return res.json();
 }
 
+/**
+ * Helper para descargar un archivo binario autenticado (xlsx, pdf, etc.).
+ * Reutiliza el manejo de Authorization/Firebase token y traduce errores HTTP
+ * a mensajes en español, igual que el resto del cliente `api`.
+ */
+async function apiDownload(
+  endpoint: string,
+  filename: string,
+  options: { token?: string; method?: string; body?: unknown } = {},
+): Promise<void> {
+  const { token, method = 'GET', body } = options;
+
+  const headers: Record<string, string> = {};
+
+  let authToken = token;
+  if (!authToken && auth.currentUser) {
+    try {
+      authToken = await auth.currentUser.getIdToken();
+    } catch (e) {
+      console.warn('Failed to get Firebase token for download', e);
+    }
+  }
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('Sin conexión. Verifica tu conexión a internet.');
+  }
+
+  if (!res.ok) {
+    // Cuando el backend devuelve JSON con `message`, intentamos extraerlo;
+    // si no, usamos el mapa estándar.
+    let message = HTTP_ERROR_MESSAGES[res.status] ?? `Error inesperado (${res.status})`;
+    try {
+      const json = await res.json();
+      const backendMsg = json?.message;
+      if (Array.isArray(backendMsg)) message = backendMsg[0] ?? message;
+      else if (typeof backendMsg === 'string' && backendMsg.trim()) message = backendMsg;
+    } catch {
+      /* el body no es JSON: mantenemos el fallback */
+    }
+    throw new Error(message);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function apiDownloadPdf(
+  endpoint: string,
+  filename: string,
+  token?: string,
+): Promise<void> {
+  const headers: Record<string, string> = {};
+
+  let authToken = token;
+  if (!authToken && auth.currentUser) {
+    try {
+      authToken = await auth.currentUser.getIdToken();
+    } catch (e) {
+      console.warn('Failed to get Firebase token for PDF download', e);
+    }
+  }
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, { method: 'GET', headers });
+  } catch {
+    throw new Error('Sin conexión. Verifica tu conexión a internet.');
+  }
+
+  if (!res.ok) {
+    let json: Record<string, unknown> | null = null;
+    try {
+      json = (await res.json()) as Record<string, unknown>;
+    } catch {
+      json = null;
+    }
+    if (res.status === 400 && json && Array.isArray(json.warnings)) {
+      const msg =
+        typeof json.message === 'string' && json.message.trim()
+          ? json.message
+          : 'Documento incompleto';
+      const err = new Error(msg) as Error & { warnings: string[] };
+      err.warnings = json.warnings as string[];
+      throw err;
+    }
+    let message = HTTP_ERROR_MESSAGES[res.status] ?? `Error inesperado (${res.status})`;
+    const backendMsg = json?.message;
+    if (Array.isArray(backendMsg)) message = String(backendMsg[0] ?? message);
+    else if (typeof backendMsg === 'string' && backendMsg.trim()) message = backendMsg;
+    throw new Error(message);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export const api = {
   get: <T>(endpoint: string, token?: string) =>
     apiFetch<T>(endpoint, { method: 'GET', token }),
@@ -79,4 +205,10 @@ export const api = {
 
   delete: <T>(endpoint: string, token?: string) =>
     apiFetch<T>(endpoint, { method: 'DELETE', token }),
+
+  download: (endpoint: string, filename: string, token?: string) =>
+    apiDownload(endpoint, filename, { token }),
+
+  downloadQuotationPdf: (quotationId: string, filename: string, token?: string, force = false) =>
+    apiDownloadPdf(`/quotations/${quotationId}/pdf${force ? '?force=true' : ''}`, filename, token),
 };

@@ -17,8 +17,8 @@ export class ProjectsService {
     status?: string;
   }) {
     const { page: rawPage, pageSize: rawPageSize, search, status } = params;
-    const page = Number(rawPage) || 1;
-    const pageSize = Number(rawPageSize) || 20;
+    const page = Math.max(1, Number(rawPage) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(rawPageSize) || 20));
 
     let query: FirebaseFirestore.Query = this.col;
     if (status) query = query.where('status', '==', status);
@@ -31,15 +31,30 @@ export class ProjectsService {
     // Exclude soft-deleted records
     data = data.filter((item: any) => !item.deletedAt);
 
+    // Batch reads de companies y quotations relacionadas para evitar N+1.
+    const companyIds = Array.from(new Set(data.map((p: any) => p.companyId).filter(Boolean)));
+    const quotationIds = Array.from(new Set(data.map((p: any) => p.quotationId).filter(Boolean)));
+
+    const companyRefs = companyIds.map(id => this.firebase.db.collection('companies').doc(id));
+    const quotationRefs = quotationIds.map(id => this.firebase.db.collection('quotations').doc(id));
+
+    const [companyDocs, quotationDocs] = await Promise.all([
+      companyRefs.length ? this.firebase.db.getAll(...companyRefs) : Promise.resolve([]),
+      quotationRefs.length ? this.firebase.db.getAll(...quotationRefs) : Promise.resolve([]),
+    ]);
+
+    const companyMap = new Map(
+      companyDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]),
+    );
+    const quotationMap = new Map(
+      quotationDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]),
+    );
+
     for (const item of data) {
-      if (item.companyId) {
-        const c = await this.firebase.db.collection('companies').doc(item.companyId).get();
-        if (c.exists) item.company = { id: c.id, tradeName: c.data()?.tradeName };
-      }
-      if (item.quotationId) {
-        const q = await this.firebase.db.collection('quotations').doc(item.quotationId).get();
-        if (q.exists) item.quotation = { id: q.id, quotationNumber: q.data()?.quotationNumber, total: q.data()?.total };
-      }
+      const c = item.companyId ? companyMap.get(item.companyId) : null;
+      if (c) item.company = { id: item.companyId, tradeName: c.tradeName };
+      const q = item.quotationId ? quotationMap.get(item.quotationId) : null;
+      if (q) item.quotation = { id: item.quotationId, quotationNumber: q.quotationNumber, total: q.total };
     }
 
     if (search) {
@@ -93,6 +108,39 @@ export class ProjectsService {
     return project;
   }
 
+  async create(data: any) {
+    if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+      throw new BadRequestException('El nombre del proyecto es obligatorio');
+    }
+
+    const code = await this.generateProjectCode();
+    const id = this.firebase.generateId();
+    const now = new Date();
+    const docData: Record<string, any> = {
+      projectCode: code,
+      quotationId: null,
+      companyId: data.companyId || null,
+      name: data.name.trim(),
+      description: data.description?.trim() || null,
+      approvedBudget: Number(data.approvedBudget) || 0,
+      status: 'PLANNING',
+      plannedStartDate: data.plannedStartDate ? new Date(data.plannedStartDate) : null,
+      plannedEndDate: data.plannedEndDate ? new Date(data.plannedEndDate) : null,
+      actualStartDate: null,
+      actualEndDate: null,
+      managerId: data.managerId || null,
+      memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
+      taskSummary: null,
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.col.doc(id).set(docData);
+    return { id, ...docData };
+  }
+
   async createFromQuotation(quotationId: string) {
     const qDoc = await this.firebase.db.collection('quotations').doc(quotationId).get();
     if (!qDoc.exists) throw new NotFoundException('Cotización no encontrada');
@@ -107,13 +155,23 @@ export class ProjectsService {
     const code = await this.generateProjectCode();
     const id = this.firebase.generateId();
     const now = new Date();
-    const docData = {
+    const docData: Record<string, any> = {
       projectCode: code,
       quotationId,
       companyId: quotation.companyId,
       name: quotation.title,
+      description: null,
       approvedBudget: quotation.total || 0,
       status: 'PLANNING',
+      plannedStartDate: null,
+      plannedEndDate: null,
+      actualStartDate: null,
+      actualEndDate: null,
+      managerId: null,
+      memberIds: [],
+      taskSummary: null,
+      tags: [],
+      deletedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -125,7 +183,70 @@ export class ProjectsService {
   async update(id: string, data: any) {
     const doc = await this.col.doc(id).get();
     if (!doc.exists) throw new NotFoundException('Proyecto no encontrado');
-    const updateData = { ...data, updatedAt: new Date() };
+
+    // Allowlist explícita: nadie puede sobrescribir status, projectCode, companyId,
+    // quotationId, deletedAt, createdAt, etc. desde el body.
+    const ALLOWED_FIELDS = ['name', 'description', 'approvedBudget', 'plannedStartDate', 'plannedEndDate', 'actualStartDate', 'managerId', 'memberIds', 'tags'];
+    const updateData: Record<string, any> = { updatedAt: new Date() };
+
+    for (const key of ALLOWED_FIELDS) {
+      if (!(key in data)) continue;
+      const value = data[key];
+
+      if (key === 'name' || key === 'description') {
+        if (value !== null && typeof value !== 'string') {
+          throw new BadRequestException(`Campo "${key}" debe ser texto`);
+        }
+        updateData[key] = typeof value === 'string' ? value.trim() : value;
+        continue;
+      }
+
+      if (key === 'approvedBudget') {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 0) {
+          throw new BadRequestException('approvedBudget debe ser un número ≥ 0');
+        }
+        updateData[key] = n;
+        continue;
+      }
+
+      if (key === 'plannedStartDate' || key === 'plannedEndDate' || key === 'actualStartDate') {
+        if (value === null || value === '') {
+          updateData[key] = null;
+          continue;
+        }
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) {
+          throw new BadRequestException(`Campo "${key}" no es una fecha válida`);
+        }
+        updateData[key] = d;
+        continue;
+      }
+
+      if (key === 'managerId') {
+        if (value) {
+          const userDoc = await this.firebase.db.collection('users').doc(value).get();
+          if (!userDoc.exists) throw new BadRequestException('Gerente de proyecto no encontrado');
+        }
+        updateData[key] = value || null;
+        continue;
+      }
+
+      if (key === 'memberIds') {
+        updateData[key] = Array.isArray(value) ? value : [];
+        continue;
+      }
+
+      if (key === 'tags') {
+        updateData[key] = Array.isArray(value) ? value : [];
+        continue;
+      }
+    }
+
+    if (updateData.name === '') {
+      throw new BadRequestException('El nombre del proyecto no puede quedar vacío');
+    }
+
     await this.col.doc(id).update(updateData);
     return { id, ...doc.data(), ...updateData };
   }
