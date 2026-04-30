@@ -24,9 +24,6 @@
   ],
   "hosting": {
     "public": "packages/frontend/out",
-    "predeploy": [
-      "pnpm --filter frontend build"
-    ],
     "cleanUrls": true,
     "trailingSlash": false,
     "ignore": [
