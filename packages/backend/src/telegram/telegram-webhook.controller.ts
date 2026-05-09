@@ -1,4 +1,4 @@
-import { Controller, Post, Req, Res, Logger } from '@nestjs/common';
+import { Controller, HttpCode, Post, Req, Res, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { webhookCallback } from 'grammy';
 import { TelegramBotService } from './services/telegram-bot.service';
@@ -18,6 +18,7 @@ export class TelegramWebhookController {
   constructor(private readonly botService: TelegramBotService) {}
 
   @Post('webhook')
+  @HttpCode(200)
   async handleWebhook(@Req() req: Request, @Res() res: Response) {
     const bot = this.botService.getBot();
     if (!bot) {

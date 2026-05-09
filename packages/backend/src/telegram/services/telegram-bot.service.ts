@@ -16,6 +16,7 @@ export class TelegramBotService implements OnModuleInit {
   private readonly logger = new Logger(TelegramBotService.name);
   private bot: Bot;
   private readonly botToken: string;
+  private readonly isServerless: boolean;
 
   constructor(
     private config: ConfigService,
@@ -24,6 +25,7 @@ export class TelegramBotService implements OnModuleInit {
     private quotationsService: QuotationsService,
   ) {
     this.botToken = this.config.get<string>('TELEGRAM_BOT_TOKEN') || '';
+    this.isServerless = Boolean(process.env.K_SERVICE || process.env.FUNCTION_TARGET);
   }
 
   async onModuleInit() {
@@ -38,9 +40,7 @@ export class TelegramBotService implements OnModuleInit {
 
     // In local development, use long-polling since Telegram can't reach localhost.
     // In production (Cloud Functions), the webhook controller handles updates.
-    const isProduction = process.env.NODE_ENV === 'production' ||
-      process.env.K_SERVICE ||       // Cloud Functions v2
-      process.env.FUNCTION_TARGET;   // Cloud Functions v1
+    const isProduction = process.env.NODE_ENV === 'production' || this.isServerless;
 
     if (!isProduction) {
       this.logger.log('Starting Telegram bot in POLLING mode (development)...');
@@ -165,9 +165,14 @@ export class TelegramBotService implements OnModuleInit {
 
     // Process asynchronously — do NOT await inside the handler to avoid
     // Telegram's 30 s webhook timeout killing the processing chain.
-    this.processVoiceAsync(ctx, chatId, userId, voice).catch((err) => {
-      this.logger.error(`Unhandled voice processing error: ${err}`);
-    });
+    const processing = this.processVoiceAsync(ctx, chatId, userId, voice);
+    if (this.isServerless) {
+      await processing;
+    } else {
+      processing.catch((err) => {
+        this.logger.error(`Unhandled voice processing error: ${err}`);
+      });
+    }
   }
 
   // ─── Text Messages ────────────────────────────────────────────────
@@ -187,9 +192,14 @@ export class TelegramBotService implements OnModuleInit {
 
     await ctx.reply('🔍 Procesando con IA... un momento ⏳');
 
-    this.processTextAsync(ctx, chatId, userId, text).catch((err) => {
-      this.logger.error(`Unhandled text processing error: ${err}`);
-    });
+    const processing = this.processTextAsync(ctx, chatId, userId, text);
+    if (this.isServerless) {
+      await processing;
+    } else {
+      processing.catch((err) => {
+        this.logger.error(`Unhandled text processing error: ${err}`);
+      });
+    }
   }
 
   // ─── Callback Queries (Inline Buttons) ────────────────────────────
