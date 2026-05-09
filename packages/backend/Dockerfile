@@ -7,6 +7,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
+COPY packages/backend/fym-shared-1.0.0.tgz ./packages/backend/
 RUN pnpm install --frozen-lockfile
 # Ensure exceljs is linked (pnpm CAS hard-link can fail silently on some hosts)
 RUN test -d packages/backend/node_modules/exceljs || (cd packages/backend && npm install exceljs@4.4.0 --no-save --legacy-peer-deps --quiet)
@@ -30,6 +31,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
+COPY packages/backend/fym-shared-1.0.0.tgz ./packages/backend/
 RUN pnpm install --frozen-lockfile --prod
 # Ensure exceljs is linked (pnpm CAS hard-link can fail silently on some hosts)
 RUN test -d packages/backend/node_modules/exceljs || (cd packages/backend && npm install exceljs@4.4.0 --no-save --legacy-peer-deps --quiet)
