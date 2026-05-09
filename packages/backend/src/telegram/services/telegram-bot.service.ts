@@ -468,7 +468,7 @@ export class TelegramBotService implements OnModuleInit {
       }
 
       // Create the quotation
-      const quotationData: Record<string, unknown> = {
+      const rawQuotationData: Record<string, unknown> = {
         title: draft.title,
         companyId,
         contactId: state.resolvedContactId || undefined,
@@ -480,9 +480,17 @@ export class TelegramBotService implements OnModuleInit {
       };
 
       if (draft.executionLocation) {
-        quotationData.commercialTerms = {
+        rawQuotationData.commercialTerms = {
           executionLocation: draft.executionLocation,
         };
+      }
+
+      // Filter out undefined and null values to prevent Firestore validation errors
+      const quotationData: any = {};
+      for (const [key, value] of Object.entries(rawQuotationData)) {
+        if (value !== undefined && value !== null) {
+          quotationData[key] = value;
+        }
       }
 
       const result = await this.quotationsService.create(
