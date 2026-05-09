@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Patch, Delete, Body, Param, UseGuards } fro
 import { FirebaseAuthGuard, RolesGuard } from '../../common/guards';
 import { Roles, CurrentUser } from '../../common/decorators';
 import { ProjectMilestonesService } from '../services/project-milestones.service';
+import { CreateMilestoneDto, UpdateMilestoneDto } from '../dto';
 
 @Controller('projects/:projectId/milestones')
 @UseGuards(FirebaseAuthGuard, RolesGuard)
@@ -18,7 +19,7 @@ export class ProjectMilestonesController {
   @Roles('ADMIN', 'MANAGER')
   create(
     @Param('projectId') projectId: string,
-    @Body() dto: any,
+    @Body() dto: CreateMilestoneDto,
     @CurrentUser() user: any,
   ) {
     return this.milestonesService.create(projectId, dto, { id: user.id, fullName: user.fullName });
@@ -28,7 +29,7 @@ export class ProjectMilestonesController {
   @Roles('ADMIN', 'MANAGER')
   update(
     @Param('id') id: string,
-    @Body() dto: any,
+    @Body() dto: UpdateMilestoneDto,
     @CurrentUser() user: any,
   ) {
     return this.milestonesService.update(id, dto, { id: user.id, fullName: user.fullName });

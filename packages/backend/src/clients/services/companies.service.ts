@@ -17,18 +17,25 @@ export class CompaniesService {
     sortOrder?: string;
   }) {
     const { page: rawPage, pageSize: rawPageSize, search, sortBy = 'createdAt', sortOrder = 'desc' } = params;
-    const page = Number(rawPage) || 1;
-    const pageSize = Number(rawPageSize) || 20;
+    const page = Math.max(1, Number(rawPage) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(rawPageSize) || 20));
 
     let query: FirebaseFirestore.Query = this.col.where('isActive', '==', true);
     query = query.orderBy(sortBy, sortOrder as FirebaseFirestore.OrderByDirection);
 
-    const { docs, total } = await this.firebase.paginatedQuery(
-      query, page, pageSize,
-      this.col.where('isActive', '==', true),
-    );
-
-    let data = this.firebase.docsToArray(docs);
+    let data: any[] = [];
+    let total = 0;
+    if (search?.trim()) {
+      const snap = await query.get();
+      data = this.firebase.docsToArray(snap.docs);
+    } else {
+      const { docs, total: queryTotal } = await this.firebase.paginatedQuery(
+        query, page, pageSize,
+        query,
+      );
+      data = this.firebase.docsToArray(docs);
+      total = queryTotal;
+    }
 
     // Client-side search filter (Firestore doesn't support OR + contains natively)
     if (search) {
@@ -38,6 +45,8 @@ export class CompaniesService {
         (c.tradeName || '').toLowerCase().includes(s) ||
         (c.ruc || '').includes(s)
       );
+      total = data.length;
+      data = this.firebase.paginateArray(data, page, pageSize);
     }
 
     return {
@@ -45,6 +54,8 @@ export class CompaniesService {
       meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
     };
   }
+
+
 
   async findOne(id: string) {
     const doc = await this.col.doc(id).get();

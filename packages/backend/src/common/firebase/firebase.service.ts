@@ -78,20 +78,49 @@ export class FirebaseService implements OnModuleInit {
   docToObj<T = any>(doc: admin.firestore.DocumentSnapshot): T | null {
     if (!doc.exists) return null;
     const data = doc.data()!;
-    // Convert Firestore Timestamps to ISO strings
-    const converted: any = { id: doc.id };
-    for (const [key, value] of Object.entries(data)) {
-      if (value instanceof admin.firestore.Timestamp) {
-        converted[key] = value.toDate().toISOString();
-      } else {
-        converted[key] = value;
+    
+    const convertTimestamps = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (obj instanceof admin.firestore.Timestamp) {
+        return obj.toDate().toISOString();
       }
-    }
-    return converted as T;
+      if (Array.isArray(obj)) {
+        return obj.map(convertTimestamps);
+      }
+      if (typeof obj === 'object') {
+        const result: any = {};
+        for (const [k, v] of Object.entries(obj)) {
+          result[k] = convertTimestamps(v);
+        }
+        return result;
+      }
+      return obj;
+    };
+
+    return { id: doc.id, ...convertTimestamps(data) } as T;
   }
 
   /** Convert array of docs */
   docsToArray<T = any>(docs: admin.firestore.QueryDocumentSnapshot[]): T[] {
     return docs.map((doc) => this.docToObj<T>(doc)!);
+  }
+
+  /** Paginate an in-memory array (used after client-side filtering) */
+  paginateArray<T>(data: T[], page: number, pageSize: number): T[] {
+    const offset = (page - 1) * pageSize;
+    return data.slice(offset, offset + pageSize);
+  }
+
+  /** Batch-fetch multiple user docs by ID. Returns a Map<id, data> */
+  async batchGetUsers(
+    ids: string[],
+  ): Promise<Map<string, { fullName?: string; [key: string]: any }>> {
+    const unique = Array.from(new Set(ids.filter(Boolean)));
+    if (unique.length === 0) return new Map();
+    const refs = unique.map((id) => this._db.collection('users').doc(id));
+    const docs = await this._db.getAll(...refs);
+    return new Map(
+      docs.filter((d) => d.exists).map((d) => [d.id, d.data() as any]),
+    );
   }
 }

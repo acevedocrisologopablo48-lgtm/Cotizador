@@ -13,6 +13,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { PettyCashModule } from './petty-cash/petty-cash.module';
 import { AppConfigModule } from './app-config/app-config.module';
 import { HrModule } from './hr/hr.module';
+import { TelegramModule } from './telegram/telegram.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { HrModule } from './hr/hr.module';
     PettyCashModule,
     AppConfigModule,
     HrModule,
+    TelegramModule,
   ],
   providers: [
     {

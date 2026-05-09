@@ -19,8 +19,8 @@ export class SuppliesService {
     sortOrder?: 'asc' | 'desc';
   }) {
     const { page: rawPage, pageSize: rawPageSize, search, supplyType, categoryId, sortBy = 'name', sortOrder = 'asc' } = params;
-    const page = Number(rawPage) || 1;
-    const pageSize = Number(rawPageSize) || 20;
+    const page = Math.max(1, Number(rawPage) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(rawPageSize) || 20));
 
     let query: FirebaseFirestore.Query = this.col.where('isActive', '==', true);
     if (supplyType) query = query.where('supplyType', '==', supplyType);
@@ -28,12 +28,19 @@ export class SuppliesService {
 
     query = query.orderBy(sortBy, sortOrder);
 
-    const { docs, total } = await this.firebase.paginatedQuery(
-      query, page, pageSize,
-      this.col.where('isActive', '==', true)
-    );
-
-    let data = this.firebase.docsToArray(docs);
+    let data: any[] = [];
+    let total = 0;
+    if (search?.trim()) {
+      const snap = await query.get();
+      data = this.firebase.docsToArray(snap.docs);
+    } else {
+      const { docs, total: queryTotal } = await this.firebase.paginatedQuery(
+        query, page, pageSize,
+        query,
+      );
+      data = this.firebase.docsToArray(docs);
+      total = queryTotal;
+    }
 
     if (search) {
       const s = search.toLowerCase();
@@ -42,6 +49,8 @@ export class SuppliesService {
         (item.code || '').toLowerCase().includes(s) ||
         (item.description || '').toLowerCase().includes(s)
       );
+      total = data.length;
+      data = this.firebase.paginateArray(data, page, pageSize);
     }
 
     // Populate category
@@ -59,6 +68,8 @@ export class SuppliesService {
       meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
     };
   }
+
+
 
   async findOne(id: string) {
     const doc = await this.col.doc(id).get();

@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PettyCashService } from './petty-cash.service';
 import { FirebaseAuthGuard, RolesGuard } from '../common/guards';
 import { Roles } from '../common/decorators';
+import { CreatePettyCashDto, UpdatePettyCashDto, AddTransactionDto } from './dto';
 
 @ApiTags('Caja Chica')
 @ApiBearerAuth()
@@ -30,7 +31,7 @@ export class PettyCashController {
   @Post()
   @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Crear caja chica' })
-  async create(@Body() body: any, @Request() req: any) {
+  async create(@Body() body: CreatePettyCashDto, @Request() req: any) {
     const data = await this.service.create({ ...body, responsibleUserId: req.user.id });
     return { data };
   }
@@ -38,7 +39,7 @@ export class PettyCashController {
   @Patch(':id')
   @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Actualizar caja chica' })
-  async update(@Param('id') id: string, @Body() body: { name?: string }) {
+  async update(@Param('id') id: string, @Body() body: UpdatePettyCashDto) {
     const data = await this.service.update(id, body);
     return { data };
   }
@@ -76,7 +77,7 @@ export class PettyCashController {
   @ApiOperation({ summary: 'Registrar movimiento' })
   async addTransaction(
     @Param('id') id: string,
-    @Body() body: any,
+    @Body() body: AddTransactionDto,
     @Request() req: any,
   ) {
     const data = await this.service.addTransaction(id, body, req.user.id);

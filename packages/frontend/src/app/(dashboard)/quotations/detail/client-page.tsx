@@ -180,7 +180,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
         api.get<any>(`/quotations/${id}`, token),
         api.get<any>('/config/company', token).catch(() => null)
       ]);
-      setQuotation(quotationData);
+      setQuotation(quotationData.data);
       if (settingsData) setCompanySettings(settingsData);
     } catch (e: any) {
       addToast(e.message, 'error');

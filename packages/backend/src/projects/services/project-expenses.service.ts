@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 
 @Injectable()
 export class ProjectExpensesService {
+  private readonly logger = new Logger(ProjectExpensesService.name);
   constructor(private firebase: FirebaseService) {}
 
   private col(projectId: string) {
@@ -18,8 +19,8 @@ export class ProjectExpensesService {
 
   async findByProject(projectId: string, params: { page?: number; pageSize?: number; category?: string }) {
     const { page: rawPage, pageSize: rawPageSize, category } = params;
-    const page = Number(rawPage) || 1;
-    const pageSize = Number(rawPageSize) || 20;
+    const page = Math.max(1, Number(rawPage) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(rawPageSize) || 20));
 
     let query: FirebaseFirestore.Query = this.col(projectId);
     if (category) query = query.where('expenseCategory', '==', category);
@@ -29,14 +30,20 @@ export class ProjectExpensesService {
     const { docs, total } = await this.firebase.paginatedQuery(query, page, pageSize);
     const data = this.firebase.docsToArray(docs);
 
+    // Batch user lookups to avoid N+1 queries
+    const userIds = Array.from(new Set(
+      data.flatMap((item: any) => [item.registeredBy, item.approvedBy].filter(Boolean)),
+    ));
+    const userRefs = userIds.map(id => this.firebase.db.collection('users').doc(id));
+    const userDocs = userRefs.length ? await this.firebase.db.getAll(...userRefs) : [];
+    const userMap = new Map(userDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]));
+
     for (const item of data) {
-      if (item.registeredBy) {
-        const u = await this.firebase.db.collection('users').doc(item.registeredBy).get();
-        if (u.exists) item.registeredByUser = { fullName: u.data()?.fullName };
+      if (item.registeredBy && userMap.has(item.registeredBy)) {
+        item.registeredByUser = { fullName: userMap.get(item.registeredBy)!.fullName };
       }
-      if (item.approvedBy) {
-        const u = await this.firebase.db.collection('users').doc(item.approvedBy).get();
-        if (u.exists) item.approvedByUser = { fullName: u.data()?.fullName };
+      if (item.approvedBy && userMap.has(item.approvedBy)) {
+        item.approvedByUser = { fullName: userMap.get(item.approvedBy)!.fullName };
       }
     }
 
@@ -46,8 +53,81 @@ export class ProjectExpensesService {
   async create(projectId: string, data: any, userId: string) {
     await this.assertProject(projectId);
     const id = this.firebase.generateId();
-    const docData = { ...data, registeredBy: userId, paymentStatus: 'PENDING', createdAt: new Date() };
-    await this.col(projectId).doc(id).set(docData);
+    const amount = Number(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('El monto del gasto debe ser mayor a 0');
+    }
+
+    const description = typeof data.description === 'string' ? data.description.trim() : '';
+    if (!description) {
+      throw new BadRequestException('La descripción del gasto es obligatoria');
+    }
+
+    const expenseDate = data.expenseDate ? new Date(data.expenseDate) : new Date();
+    if (Number.isNaN(expenseDate.getTime())) {
+      throw new BadRequestException('La fecha del gasto es inválida');
+    }
+
+    const allowedCategories = new Set([
+      'MATERIAL',
+      'EQUIPMENT',
+      'LABOR',
+      'SUBCONTRACT',
+      'TRANSPORT',
+      'LODGING',
+      'FOOD',
+      'FUEL',
+      'TOOLS',
+      'PERMITS',
+      'OTHER',
+    ]);
+    const expenseCategory = String(data.expenseCategory || 'OTHER');
+    if (!allowedCategories.has(expenseCategory)) {
+      throw new BadRequestException('Categoría de gasto inválida');
+    }
+
+    const docData = {
+      expenseCategory,
+      description,
+      amount,
+      supplierName: typeof data.supplierName === 'string' ? data.supplierName.trim() : null,
+      supplierRuc: typeof data.supplierRuc === 'string' ? data.supplierRuc.trim() : null,
+      paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod.trim() : 'CASH',
+      documentType: typeof data.documentType === 'string' ? data.documentType.trim() : 'NONE',
+      documentNumber: typeof data.documentNumber === 'string' ? data.documentNumber.trim() : null,
+      invoiceNumber:
+        (typeof data.invoiceNumber === 'string' ? data.invoiceNumber.trim() : null) ||
+        (typeof data.documentNumber === 'string' ? data.documentNumber.trim() : null),
+      invoiceImageUrl: typeof data.invoiceImageUrl === 'string' ? data.invoiceImageUrl.trim() : null,
+      expenseDate,
+      registeredBy: userId,
+      paymentStatus: 'PENDING',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const batch = this.firebase.db.batch();
+    batch.set(this.col(projectId).doc(id), docData);
+
+    if (docData.description && docData.amount > 0) {
+      const unitPrice = Number(data.unitPrice);
+      const priceRef = this.firebase.db.collection('priceHistory').doc();
+      batch.set(priceRef, {
+        projectId,
+        expenseId: id,
+        description: docData.description,
+        supplierName: docData.supplierName || null,
+        supplierRuc: docData.supplierRuc || null,
+        unitPrice: Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : docData.amount,
+        totalAmount: docData.amount,
+        category: docData.expenseCategory || null,
+        documentNumber: docData.invoiceNumber || docData.documentNumber || null,
+        recordedAt: new Date(),
+        recordedBy: userId,
+      });
+    }
+
+    await batch.commit();
     return { id, ...docData };
   }
 

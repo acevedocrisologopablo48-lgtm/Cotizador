@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { ProjectStatus } from '@fym/shared';
+import { ProjectMaterialsService } from './project-materials.service';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private firebase: FirebaseService) {}
+  constructor(
+    private firebase: FirebaseService,
+    private materialsService: ProjectMaterialsService,
+  ) {}
 
   private get col() {
     return this.firebase.db.collection('projects');
@@ -15,21 +19,35 @@ export class ProjectsService {
     pageSize?: number;
     search?: string;
     status?: string;
+    user?: any;
   }) {
-    const { page: rawPage, pageSize: rawPageSize, search, status } = params;
+    await this.ensureInternalProject();
+
+    const { page: rawPage, pageSize: rawPageSize, search, status, user } = params;
     const page = Math.max(1, Number(rawPage) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(rawPageSize) || 20));
 
-    let query: FirebaseFirestore.Query = this.col;
+    let query: FirebaseFirestore.Query = this.col.where('deletedAt', '==', null);
     if (status) query = query.where('status', '==', status);
 
     query = query.orderBy('createdAt', 'desc');
 
-    const { docs, total } = await this.firebase.paginatedQuery(query, page, pageSize);
-    let data = this.firebase.docsToArray(docs);
+    const requiresInMemoryFiltering = Boolean(search?.trim()) || user?.role === 'CLIENT';
+    let data: any[] = [];
+    let total = 0;
 
-    // Exclude soft-deleted records
-    data = data.filter((item: any) => !item.deletedAt);
+    if (requiresInMemoryFiltering) {
+      const snap = await query.get();
+      data = this.firebase.docsToArray(snap.docs);
+      if (user?.role === 'CLIENT') {
+        const allowed = new Set(Array.isArray(user.allowedProjectIds) ? user.allowedProjectIds : []);
+        data = data.filter((item: any) => allowed.has(item.id));
+      }
+    } else {
+      const { docs, total: queryTotal } = await this.firebase.paginatedQuery(query, page, pageSize, query);
+      data = this.firebase.docsToArray(docs);
+      total = queryTotal;
+    }
 
     // Batch reads de companies y quotations relacionadas para evitar N+1.
     const companyIds = Array.from(new Set(data.map((p: any) => p.companyId).filter(Boolean)));
@@ -57,6 +75,16 @@ export class ProjectsService {
       if (q) item.quotation = { id: item.quotationId, quotationNumber: q.quotationNumber, total: q.total };
     }
 
+    await Promise.all(
+      data.map(async (item: any) => {
+        item.materialAlert =
+          user?.role === 'CLIENT'
+            ? { level: 'GREEN', pending: 0, overdue: 0, dueSoon: 0 }
+            : await this.materialsService.getProjectAlert(item.id);
+        item.progressSummary = await this.getProgressSummary(item.id);
+      }),
+    );
+
     if (search) {
       const s = search.toLowerCase();
       data = data.filter((item: any) =>
@@ -66,12 +94,18 @@ export class ProjectsService {
       );
     }
 
+    if (requiresInMemoryFiltering) {
+      total = data.length;
+      data = this.firebase.paginateArray(data, page, pageSize);
+    }
+
     return { data, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, user?: any) {
     const doc = await this.col.doc(id).get();
     if (!doc.exists) throw new NotFoundException('Proyecto no encontrado');
+    this.assertClientProjectAccess(id, user);
     const project = this.firebase.docToObj(doc);
 
     if (project.companyId) {
@@ -83,13 +117,26 @@ export class ProjectsService {
       if (q.exists) project.quotation = { id: q.id, quotationNumber: q.data()?.quotationNumber, total: q.data()?.total, title: q.data()?.title };
     }
 
+    if (user?.role === 'CLIENT') {
+      return project;
+    }
+
     // Populate subcollections
     const expensesSnap = await this.col.doc(id).collection('expenses').orderBy('expenseDate', 'desc').limit(20).get();
     project.expenses = this.firebase.docsToArray(expensesSnap.docs);
+    
+    const userRefs: FirebaseFirestore.DocumentReference[] = [];
     for(const e of project.expenses) {
-      if(e.registeredBy) {
-        const u = await this.firebase.db.collection('users').doc(e.registeredBy).get();
-        if(u.exists) e.registeredByUser = { fullName: u.data()?.fullName };
+      if(e.registeredBy) userRefs.push(this.firebase.db.collection('users').doc(e.registeredBy));
+    }
+    
+    const uniqueUserRefs = Array.from(new Set(userRefs.map(r => r.path))).map(p => this.firebase.db.doc(p));
+    const userDocs = uniqueUserRefs.length ? await this.firebase.db.getAll(...uniqueUserRefs) : [];
+    const userMap = new Map(userDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]));
+
+    for(const e of project.expenses) {
+      if(e.registeredBy && userMap.has(e.registeredBy)) {
+        e.registeredByUser = { fullName: userMap.get(e.registeredBy).fullName };
       }
     }
 
@@ -142,42 +189,56 @@ export class ProjectsService {
   }
 
   async createFromQuotation(quotationId: string) {
-    const qDoc = await this.firebase.db.collection('quotations').doc(quotationId).get();
-    if (!qDoc.exists) throw new NotFoundException('Cotización no encontrada');
-    const quotation = qDoc.data()!;
-    if (quotation.status !== 'APPROVED' && quotation.status !== 'SENT') {
-      throw new BadRequestException('La cotización debe estar aprobada o enviada');
-    }
-
-    const existingSnap = await this.col.where('quotationId', '==', quotationId).get();
-    if (!existingSnap.empty) throw new BadRequestException('Ya existe un proyecto para esta cotización');
-
-    const code = await this.generateProjectCode();
-    const id = this.firebase.generateId();
     const now = new Date();
-    const docData: Record<string, any> = {
-      projectCode: code,
-      quotationId,
-      companyId: quotation.companyId,
-      name: quotation.title,
-      description: null,
-      approvedBudget: quotation.total || 0,
-      status: 'PLANNING',
-      plannedStartDate: null,
-      plannedEndDate: null,
-      actualStartDate: null,
-      actualEndDate: null,
-      managerId: null,
-      memberIds: [],
-      taskSummary: null,
-      tags: [],
-      deletedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const year = now.getFullYear();
+    const counterRef = this.firebase.db.collection('_counters').doc(`projects_${year}`);
+    const quotationRef = this.firebase.db.collection('quotations').doc(quotationId);
 
-    await this.col.doc(id).set(docData);
-    return { id, ...docData };
+    return this.firebase.db.runTransaction(async (transaction) => {
+      const [qDoc, existingSnap, counterDoc] = await Promise.all([
+        transaction.get(quotationRef),
+        transaction.get(this.col.where('quotationId', '==', quotationId).limit(1)),
+        transaction.get(counterRef),
+      ]);
+
+      if (!qDoc.exists) throw new NotFoundException('Cotización no encontrada');
+      const quotation = qDoc.data()!;
+      if (quotation.status !== 'APPROVED' && quotation.status !== 'SENT') {
+        throw new BadRequestException('La cotización debe estar aprobada o enviada');
+      }
+      if (!existingSnap.empty) {
+        throw new BadRequestException('Ya existe un proyecto para esta cotización');
+      }
+
+      const count = counterDoc.exists ? Number(counterDoc.data()?.count || 0) + 1 : 1;
+      transaction.set(counterRef, { count }, { merge: true });
+
+      const projectCode = `PROY-${year}-${String(count).padStart(4, '0')}`;
+      const projectRef = this.col.doc(this.firebase.generateId());
+      const docData: Record<string, any> = {
+        projectCode,
+        quotationId,
+        companyId: quotation.companyId,
+        name: quotation.title,
+        description: null,
+        approvedBudget: quotation.total || 0,
+        status: 'PLANNING',
+        plannedStartDate: null,
+        plannedEndDate: null,
+        actualStartDate: null,
+        actualEndDate: null,
+        managerId: null,
+        memberIds: [],
+        taskSummary: null,
+        tags: [],
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      transaction.set(projectRef, docData);
+      return { id: projectRef.id, ...docData };
+    });
   }
 
   async update(id: string, data: any) {
@@ -292,12 +353,16 @@ export class ProjectsService {
 
     const totalSpent = totalExpenses + totalWorkforce + totalEquipment;
     const budget = Number(project.approvedBudget || 0);
+    const materialAlert = await this.materialsService.getProjectAlert(id);
+    const progressSummary = await this.getProgressSummary(id);
 
     return {
       budget,
       totalSpent,
       remaining: budget - totalSpent,
       percentUsed: budget > 0 ? (totalSpent / budget) * 100 : 0,
+      materialAlert,
+      progressSummary,
       breakdown: {
         expenses: { total: totalExpenses, count: expSnap.size },
         workforce: { total: totalWorkforce, count: wfSnap.size },
@@ -305,6 +370,114 @@ export class ProjectsService {
       },
     };
   }
+
+  async exportAccountingCsv(params: { month?: string }) {
+    const month = params.month || new Date().toISOString().slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      throw new BadRequestException('El mes debe tener formato YYYY-MM');
+    }
+
+    const start = new Date(`${month}-01T00:00:00.000Z`);
+    const end = new Date(start);
+    end.setUTCMonth(end.getUTCMonth() + 1);
+
+    const projectsSnap = await this.col.where('deletedAt', '==', null).get();
+    const rows: string[][] = [[
+      'Proyecto',
+      'Codigo',
+      'Fecha',
+      'Proveedor',
+      'RUC',
+      'Comprobante',
+      'Descripcion',
+      'Categoria',
+      'Monto',
+    ]];
+
+    for (const projectDoc of projectsSnap.docs) {
+      const project = projectDoc.data();
+      const expensesSnap = await projectDoc.ref
+        .collection('expenses')
+        .where('expenseDate', '>=', start)
+        .where('expenseDate', '<', end)
+        .orderBy('expenseDate', 'asc')
+        .get();
+
+      for (const expenseDoc of expensesSnap.docs) {
+        const expense = this.firebase.docToObj(expenseDoc) as any;
+        rows.push([
+          project.name || '',
+          project.projectCode || '',
+          expense.expenseDate || '',
+          expense.supplierName || '',
+          expense.supplierRuc || '',
+          expense.invoiceNumber || expense.documentNumber || '',
+          expense.description || '',
+          expense.expenseCategory || '',
+          String(expense.amount || 0),
+        ]);
+      }
+    }
+
+    return rows.map((row) => row.map((cell) => this.csvCell(cell)).join(',')).join('\n');
+  }
+
+  private async ensureInternalProject() {
+    const existing = await this.col.where('projectCode', '==', 'Z').limit(1).get();
+    if (!existing.empty) return;
+
+    const now = new Date();
+    await this.col.doc('internal-project-z').set({
+      projectCode: 'Z',
+      quotationId: null,
+      companyId: null,
+      name: 'Proyecto Z - Control Interno',
+      description: 'Controles internos del equipo, coordinaciones operativas y actividades administrativas propias.',
+      approvedBudget: 0,
+      status: 'IN_PROGRESS',
+      isInternal: true,
+      plannedStartDate: null,
+      plannedEndDate: null,
+      actualStartDate: now,
+      actualEndDate: null,
+      managerId: null,
+      memberIds: [],
+      taskSummary: null,
+      tags: ['INTERNO'],
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  private async getProgressSummary(projectId: string) {
+    const snap = await this.col.doc(projectId).collection('progressActivities').get();
+    const activities = this.firebase.docsToArray(snap.docs) as any[];
+    const average =
+      activities.length > 0
+        ? activities.reduce((sum, activity) => sum + Number(activity.progressPercent || 0), 0) / activities.length
+        : 0;
+    return {
+      activities: activities.length,
+      averagePercent: average,
+      completed: activities.filter((activity) => Number(activity.progressPercent || 0) >= 100).length,
+    };
+  }
+
+  private csvCell(value: string) {
+    const text = String(value ?? '');
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  private assertClientProjectAccess(projectId: string, user?: any) {
+    if (user?.role !== 'CLIENT') return;
+    const allowed = Array.isArray(user.allowedProjectIds) ? user.allowedProjectIds : [];
+    if (!allowed.includes(projectId)) {
+      throw new ForbiddenException('No tienes acceso a este proyecto');
+    }
+  }
+
+
 
   private async generateProjectCode(): Promise<string> {
     const year = new Date().getFullYear();

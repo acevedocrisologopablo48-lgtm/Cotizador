@@ -265,7 +265,9 @@ export default function PettyCashPage() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {funds.map((fund) => {
-            const usagePercent = Math.min(100, ((Number(fund.initialBalance) - Number(fund.currentBalance)) / Number(fund.initialBalance)) * 100);
+            const ib = Number(fund.initialBalance);
+            const cb = Number(fund.currentBalance);
+            const usagePercent = ib > 0 ? Math.min(100, Math.max(0, ((ib - cb) / ib) * 100)) : 0;
             const isOpen = fund.status === 'OPEN';
             
             return (
@@ -503,7 +505,7 @@ export default function PettyCashPage() {
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 transition-all hover:shadow-md">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Gastado</p>
                     <p className="text-xl font-bold font-mono tabular-nums text-rose-500">
-                      {fmt(Number(selectedFund.initialBalance) - Number(selectedFund.currentBalance), selectedFund.currency)}
+                      {fmt(Math.max(0, Number(selectedFund.initialBalance) - Number(selectedFund.currentBalance)), selectedFund.currency)}
                     </p>
                   </div>
                 </div>

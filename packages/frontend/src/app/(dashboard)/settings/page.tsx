@@ -31,6 +31,7 @@ interface CompanySettings {
   defaultValidityDays: number;
   defaultIgvPercentage: number;
   signatureUrl: string;
+  maxPhotosPerProgress: number;
 }
 
 export default function SettingsPage() {
@@ -53,6 +54,7 @@ export default function SettingsPage() {
     defaultValidityDays: 15,
     defaultIgvPercentage: 18,
     signatureUrl: '',
+    maxPhotosPerProgress: 3,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,15 +67,10 @@ export default function SettingsPage() {
   const [newQtType, setNewQtType] = useState('');
   const [savingTypes, setSavingTypes] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-    loadQuotationTypes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
   const loadQuotationTypes = useCallback(async () => {
+    if (!token) return;
     try {
-      const data = await api.get<string[]>('/config/quotation-types', token ?? undefined);
+      const data = await api.get<string[]>('/config/quotation-types', token);
       setQuotationTypes(data || []);
     } catch {
       // non-critical, skip
@@ -90,9 +87,10 @@ export default function SettingsPage() {
   const removeQtType = (t: string) => setQuotationTypes(prev => prev.filter(x => x !== t));
 
   const saveQuotationTypes = async () => {
+    if (!token) return;
     setSavingTypes(true);
     try {
-      await api.put('/config/quotation-types', { types: quotationTypes }, token ?? undefined);
+      await api.put('/config/quotation-types', { types: quotationTypes }, token);
       addToast('Tipos de cotización guardados', 'success');
     } catch (err: any) {
       addToast(err.message || 'Error al guardar tipos', 'error');
@@ -102,8 +100,9 @@ export default function SettingsPage() {
   };
 
   const loadSettings = useCallback(async () => {
+    if (!token) return;
     try {
-      const data = await api.get<CompanySettings>('/config/company', token ?? undefined);
+      const data = await api.get<CompanySettings>('/config/company', token);
       setSettings(data);
     } catch (err: any) {
       addToast(err.message || 'Error al cargar configuraciones', 'error');
@@ -111,6 +110,12 @@ export default function SettingsPage() {
       setLoading(false);
     }
   }, [token, addToast]);
+
+  useEffect(() => {
+    if (!token) return;
+    loadSettings();
+    loadQuotationTypes();
+  }, [loadSettings, loadQuotationTypes, token]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -124,7 +129,8 @@ export default function SettingsPage() {
 
     setSaving(true);
     try {
-      const saved = await api.put<CompanySettings>('/config/company', settings, token ?? undefined);
+      if (!token) return;
+      const saved = await api.put<CompanySettings>('/config/company', settings, token);
       setSettings(saved);
       setSaved(true);
       addToast('Configuraciones guardadas correctamente', 'success');
@@ -484,7 +490,7 @@ export default function SettingsPage() {
             </h3>
           </div>
           <CardContent className="p-10 space-y-10">
-            <div className="grid gap-10 md:grid-cols-3">
+            <div className="grid gap-10 md:grid-cols-4">
               <div className="space-y-3">
                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Divisa de Referencia</label>
                 <div className="relative">
@@ -503,7 +509,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Vigencia Propuesta (Días)</label>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Vigencia Propuesta</label>
                 <div className="relative">
                   <input
                     name="defaultValidityDays"
@@ -513,11 +519,11 @@ export default function SettingsPage() {
                     onChange={handleChange}
                     className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black font-mono text-white outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                   />
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-black text-slate-600 uppercase tracking-widest">DAYS</div>
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-black text-slate-600 uppercase tracking-widest">DÍAS</div>
                 </div>
               </div>
               <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Impuesto General (IGV)</label>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Impuesto (IGV)</label>
                 <div className="relative">
                   <input
                     name="defaultIgvPercentage"
@@ -529,6 +535,21 @@ export default function SettingsPage() {
                     className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black font-mono text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
                   />
                   <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-black text-emerald-500/50 uppercase tracking-widest">% TAX</div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Límite Fotos / Avance</label>
+                <div className="relative">
+                  <input
+                    name="maxPhotosPerProgress"
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={settings.maxPhotosPerProgress}
+                    onChange={handleChange}
+                    className="w-full bg-slate-950/50 border-white/[0.05] rounded-2xl px-6 py-4 text-[15px] font-black font-mono text-indigo-400 outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                  />
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-black text-indigo-500/50 uppercase tracking-widest">FOTOS</div>
                 </div>
               </div>
             </div>

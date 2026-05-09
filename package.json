@@ -12,8 +12,9 @@
     "lint": "pnpm -r lint",
     "lint:check": "pnpm --filter shared build && pnpm -r --parallel lint:check",
     "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\"",
-    "deploy:frontend": "pnpm --filter frontend build && firebase deploy --only hosting",
+    "deploy:frontend": "pnpm --filter frontend build && firebase deploy --only hosting,firestore,storage",
     "deploy:firebase": "pnpm build && firebase deploy --only hosting,functions,firestore,storage",
+    "deploy:functions": "pnpm build:backend && firebase deploy --only functions",
     "deploy:firebase:rules": "firebase deploy --only firestore:rules",
     "deploy:backend:note": "echo Backend se despliega desde Railway conectado al repo (ver README)"
   },

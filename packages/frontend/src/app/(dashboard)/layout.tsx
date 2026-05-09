@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Users,
   FileText,
+  MessageSquareText,
   FolderKanban,
   BarChart2,
   Wallet,
@@ -21,33 +22,42 @@ import {
   Shield,
   Camera,
   CalendarDays,
+  type LucideIcon,
 } from 'lucide-react';
 
-const navGroups = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  roles?: UserRole[];
+};
+
+const navGroups: Array<{ title: string; items: NavItem[] }> = [
   {
     title: 'Principal',
     items: [
-      { href: '/dashboard', label: 'Panel', icon: LayoutDashboard },
+      { href: '/dashboard', label: 'Panel', icon: LayoutDashboard, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT, UserRole.VIEWER] },
     ]
   },
   {
     title: 'Comercial y Ventas',
     items: [
-      { href: '/clients', label: 'Clientes', icon: Users },
-      { href: '/pricing', label: 'Matriz de Costos', icon: BarChart2 },
-      { href: '/quotations', label: 'Cotizaciones', icon: FileText },
+      { href: '/clients', label: 'Clientes', icon: Users, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT, UserRole.VIEWER] },
+      { href: '/pricing', label: 'Matriz de Costos', icon: BarChart2, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT, UserRole.VIEWER] },
+      { href: '/quotations', label: 'Cotizaciones', icon: FileText, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT, UserRole.VIEWER] },
     ]
   },
   {
     title: 'Operaciones',
     items: [
       { href: '/projects', label: 'Proyectos', icon: FolderKanban },
+      { href: '/queries', label: 'Consultas', icon: MessageSquareText, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.VIEWER, UserRole.CLIENT] },
     ]
   },
   {
     title: 'Finanzas',
     items: [
-      { href: '/petty-cash', label: 'Caja Chica', icon: Wallet },
+      { href: '/petty-cash', label: 'Caja Chica', icon: Wallet, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT] },
     ]
   },
   {
@@ -100,7 +110,7 @@ const navGroups = [
         icon: Shield,
         roles: [UserRole.ADMIN],
       },
-      { href: '/settings', label: 'Configuraciones', icon: Settings },
+      { href: '/settings', label: 'Configuraciones', icon: Settings, roles: [UserRole.ADMIN, UserRole.MANAGER] },
     ]
   }
 ];
@@ -114,6 +124,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!isLoading && !user) router.replace('/login');
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    if (!isLoading && user?.role === UserRole.CLIENT && !pathname.startsWith('/projects') && !pathname.startsWith('/queries')) {
+      router.replace('/projects');
+    }
+  }, [user, isLoading, pathname, router]);
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 

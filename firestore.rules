@@ -78,18 +78,58 @@ service cloud.firestore {
     match /quotations/{quotationId} {
       allow read: if isAuthenticated();
       allow write: if isQuotationEditor();
+
+      // Subcollections: sections and their items
+      match /sections/{sectionId} {
+        allow read: if isAuthenticated();
+        allow write: if isQuotationEditor();
+
+        match /items/{itemId} {
+          allow read: if isAuthenticated();
+          allow write: if isQuotationEditor();
+        }
+      }
     }
 
     // ─── Projects ───────────────────────────────────────────
     match /projects/{projectId} {
       allow read: if isAuthenticated();
       allow write: if isManagerOrAbove();
+
+      // Explicit subcollections (preferred over wildcard for auditability)
+      match /expenses/{docId} {
+        allow read: if isAuthenticated();
+        allow write: if isManagerOrAbove();
+      }
+      match /workforceLogs/{docId} {
+        allow read: if isAuthenticated();
+        allow write: if isManagerOrAbove();
+      }
+      match /equipmentLogs/{docId} {
+        allow read: if isAuthenticated();
+        allow write: if isManagerOrAbove();
+      }
+      match /progressActivities/{docId} {
+        allow read: if isAuthenticated();
+        allow write: if isManagerOrAbove();
+
+        match /dailyLogs/{logId} {
+          allow read: if isAuthenticated();
+          allow write: if isManagerOrAbove();
+        }
+      }
     }
 
     // ─── Petty cash ─────────────────────────────────────────
     match /pettyCash/{pettyCashId} {
       allow read: if isAuthenticated();
       allow write: if isManagerOrAbove();
+
+      // Subcollection: transactions
+      match /transactions/{txnId} {
+        allow read: if isAuthenticated();
+        allow write: if isManagerOrAbove();
+      }
     }
 
     // ─── HR: Employees ──────────────────────────────────────
@@ -140,6 +180,36 @@ service cloud.firestore {
     match /projectActivityLog/{logId} {
       allow read: if false;
       allow write: if false; // Only written by backend Admin SDK
+    }
+
+    // ─── Project Queries / Audit / Notifications (API only) ───────────────
+    match /projectQueries/{queryId} {
+      allow read, write: if false;
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /projectQueryAudit/{auditId} {
+      allow read, write: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read, write: if false;
+    }
+
+    match /emailQueue/{emailId} {
+      allow read, write: if false;
+    }
+
+    // ─── Internal counters (backend Admin SDK only) ─────────
+    match /_counters/{counterId} {
+      allow read, write: if false; // Only written by backend Admin SDK
+    }
+
+    // ─── Price history (backend Admin SDK only) ──────────────
+    match /priceHistory/{priceId} {
+      allow read, write: if false; // Only written by backend Admin SDK
     }
 
     // ─── Catch-all: deny everything else ────────────────────

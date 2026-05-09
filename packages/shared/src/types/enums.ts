@@ -5,6 +5,7 @@ export enum UserRole {
   FIELD_SUPERVISOR = 'FIELD_SUPERVISOR',
   ACCOUNTANT = 'ACCOUNTANT',
   VIEWER = 'VIEWER',
+  CLIENT = 'CLIENT',
 }
 
 export enum QuotationStatus {
@@ -245,4 +246,25 @@ export enum ProjectActivityAction {
   PROJECT_UPDATED = 'PROJECT_UPDATED',
   MEMBER_ADDED = 'MEMBER_ADDED',
   MEMBER_REMOVED = 'MEMBER_REMOVED',
+}
+
+export enum ProjectQueryStatus {
+  OPEN = 'OPEN',
+  IN_PROGRESS = 'IN_PROGRESS',
+  RESOLVED = 'RESOLVED',
+  CLOSED = 'CLOSED',
+}
+
+export enum ProjectQueryPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  URGENT = 'URGENT',
+}
+
+export enum ProjectQueryAuditAction {
+  QUERY_CREATED = 'QUERY_CREATED',
+  QUERY_READ = 'QUERY_READ',
+  QUERY_STATUS_CHANGED = 'QUERY_STATUS_CHANGED',
+  MESSAGE_SENT = 'MESSAGE_SENT',
 }

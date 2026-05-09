@@ -59,18 +59,29 @@ pnpm build:frontend
 
 ## Despliegue
 
-### 1) Frontend (Firebase Hosting)
+**URLs de producción (proyecto Firebase `cotiza-luis`):**
 
-Build + deploy:
+- Sitio estático (Hosting): https://cotiza-luis.web.app  
+- API en Cloud Functions (misma cuenta Firebase): el cliente debe usar `NEXT_PUBLIC_API_URL` apuntando a la URL pública del hosting con `/api/v1` (por ejemplo `https://cotiza-luis.web.app/api/v1`), o bien el backend en **Railway** si así lo tienes configurado en el build.
+
+### 1) Frontend y reglas (Firebase Hosting + Firestore + Storage)
+
+Build + deploy de hosting y reglas (sin Functions):
 
 ```bash
 pnpm deploy:frontend
 ```
 
-Deploy completo de Firebase (hosting + reglas + índices):
+Deploy completo: frontend exportado + Cloud Function `api` + reglas Firestore e índices + Storage:
 
 ```bash
 pnpm deploy:firebase
+```
+
+Solo actualizar la función `api` tras cambios en el backend:
+
+```bash
+pnpm deploy:functions
 ```
 
 ### 2) Backend (Railway)

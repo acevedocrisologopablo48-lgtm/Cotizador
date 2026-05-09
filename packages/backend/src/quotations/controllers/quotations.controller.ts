@@ -74,8 +74,9 @@ export class QuotationsController {
 
   @Get(':id')
   @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'VIEWER')
-  findOne(@Param('id') id: string) {
-    return this.quotationsService.findOne(id);
+  async findOne(@Param('id') id: string) {
+    const data = await this.quotationsService.findOne(id);
+    return { data };
   }
 
   @Post()

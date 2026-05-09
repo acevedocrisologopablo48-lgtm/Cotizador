@@ -1,929 +1,974 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth';
+/* eslint-disable @next/next/no-img-element */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  ArrowLeft,
+  Camera,
+  ClipboardList,
+  DollarSign,
+  PackageCheck,
+  Plus,
+  Printer,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { StatusBadge } from '@/components/ui/status-badge';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/components/ui/toast';
-import { ArrowLeft, Plus, DollarSign, Users, Wrench, Pencil, FileText } from 'lucide-react';
-import Link from 'next/link';
-import { ProjectManagementModule } from './components/ProjectManagementModule';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Badge } from '@/components/ui/badge';
 
-const EXPENSE_CATEGORIES = [
-  'MATERIAL', 'EQUIPMENT', 'LABOR', 'SUBCONTRACT', 'TRANSPORT',
-  'LODGING', 'FOOD', 'FUEL', 'TOOLS', 'PERMITS', 'OTHER',
+const MATERIAL_TYPES = [
+  { value: 'TOOL', label: 'Herramienta' },
+  { value: 'MATERIAL_CIVIL', label: 'Material obra civil' },
+  { value: 'ELECTRICAL', label: 'Material electrico' },
+  { value: 'CONSUMABLE', label: 'Consumible' },
+  { value: 'OTHER', label: 'Otro' },
 ];
 
-const WORKER_ROLES = [
-  'OPERARIO', 'OFICIAL', 'PEON', 'MAESTRO_OBRA', 'SUPERVISOR',
-  'SOLDADOR', 'ELECTRICISTA', 'PINTOR', 'RIGGER', 'ARENADOR',
+const MATERIAL_STATUSES = [
+  { value: 'REQUESTED', label: 'Solicitado' },
+  { value: 'REVIEWING', label: 'En revision' },
+  { value: 'PURCHASED', label: 'Comprado' },
+  { value: 'IN_TRANSIT', label: 'En camino' },
+  { value: 'DELIVERED', label: 'Entregado' },
+  { value: 'OBSERVED', label: 'Observado' },
+  { value: 'CANCELLED', label: 'Cancelado' },
 ];
+
+const EXPENSE_CATEGORIES = ['MATERIAL', 'TOOLS', 'TRANSPORT', 'LABOR', 'SERVICES', 'EQUIPMENT', 'OTHER'];
 
 export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) {
-  const searchParams = useSearchParams();
-  const id = idProp ?? searchParams.get('id');
+  const params = useSearchParams();
+  const id = idProp ?? params.get('id');
+  const router = useRouter();
   const { token, user } = useAuth();
   const { addToast } = useToast();
-  const router = useRouter();
-  // Permisos derivados del rol del usuario (debe coincidir con el guard del backend).
-  const role = user?.role;
-  const canManage = role === 'ADMIN' || role === 'MANAGER';
-  const canRegisterField =
-    role === 'ADMIN' || role === 'MANAGER' || role === 'ENGINEER' || role === 'FIELD_SUPERVISOR';
   const [project, setProject] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [companySettings, setCompanySettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [expenseDialog, setExpenseDialog] = useState(false);
-  const [workforceDialog, setWorkforceDialog] = useState(false);
-  const [equipmentDialog, setEquipmentDialog] = useState(false);
-  const [editProjectDialog, setEditProjectDialog] = useState(false);
-  const [projectForm, setProjectForm] = useState({ name: '', description: '' });
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [materialOpen, setMaterialOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<
+    | { type: 'material'; record: any }
+    | { type: 'activity'; record: any }
+    | null
+  >(null);
+  const [saving, setSaving] = useState(false);
+  const isClient = user?.role === 'CLIENT';
 
   const [expenseForm, setExpenseForm] = useState({
-    expenseCategory: 'MATERIAL', description: '', amount: '', supplierName: '',
-    documentType: 'NONE', documentNumber: '', paymentMethod: 'CASH', expenseDate: '',
+    expenseCategory: 'MATERIAL',
+    description: '',
+    amount: '',
+    supplierName: '',
+    supplierRuc: '',
+    invoiceNumber: '',
+    expenseDate: new Date().toISOString().slice(0, 10),
   });
-  const [workforceForm, setWorkforceForm] = useState({
-    workerName: '', workerRole: 'OPERARIO', workDate: '',
-    hoursRegular: '8', hoursOvertime: '0', dailyRate: '', overtimeRate: '0',
+  const [materialForm, setMaterialForm] = useState({
+    type: 'MATERIAL_CIVIL',
+    description: '',
+    quantity: '',
+    requiredDate: new Date().toISOString().slice(0, 10),
   });
-  const [equipmentForm, setEquipmentForm] = useState({
-    equipmentName: '', supplierName: '', rentalType: 'DAILY', startDate: '', dailyRate: '',
+  const [activityForm, setActivityForm] = useState({
+    name: '',
+    description: '',
+    initialLogText: '',
+    initialProgressDelta: '',
+    photos: [] as string[],
+  });
+  const activityPhotosInputRef = useRef<HTMLInputElement>(null);
+  const logPhotosInputRef = useRef<HTMLInputElement>(null);
+  const [logForm, setLogForm] = useState({
+    rawText: '',
+    progressDelta: '',
+    logDate: new Date().toISOString().slice(0, 10),
+    photos: [] as string[],
   });
 
   const load = useCallback(async () => {
+    if (!id || !token) return;
     try {
       setLoading(true);
-      const [proj, summ] = await Promise.all([
-        api.get<any>(`/projects/${id}`, token!),
-        api.get<any>(`/projects/${id}/summary`, token!),
+      const [projectRes, summaryRes, materialsRes, activitiesRes, settingsRes] = await Promise.all([
+        api.get<any>(`/projects/${id}`, token),
+        isClient ? Promise.resolve(null) : api.get<any>(`/projects/${id}/summary`, token),
+        isClient ? Promise.resolve([]) : api.get<any[]>(`/projects/${id}/materials`, token),
+        api.get<any[]>(`/projects/${id}/progress/activities`, token),
+        api.get<any>('/config/company', token),
       ]);
-      setProject(proj);
-      setSummary(summ);
-    } catch (e: any) {
-      addToast(e.message, 'error');
+      setProject(projectRes.data);
+      setSummary(summaryRes);
+      setMaterials(materialsRes || []);
+      setActivities(activitiesRes || []);
+      setCompanySettings(settingsRes || {});
+    } catch (error: any) {
+      addToast(error.message, 'error');
     } finally {
       setLoading(false);
     }
-  }, [id, token, addToast]);
+  }, [addToast, id, isClient, token]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const updateStatus = async (status: string) => {
-    try {
-      await api.patch(`/projects/${id}/status`, { status }, token!);
-      addToast('Estado actualizado', 'success');
-      load();
-    } catch (e: any) { addToast(e.message, 'error'); }
-  };
+  const expenses = project?.expenses || [];
+  const progressAverage = Math.round(summary?.progressSummary?.averagePercent || 0);
+  const pendingMaterials = materials.filter((item) => !['DELIVERED', 'CANCELLED'].includes(item.status)).length;
 
-  const openEditProject = () => {
-    setProjectForm({
-      name: project.name || '',
-      description: project.description || '',
-    });
-    setEditProjectDialog(true);
-  };
-
-  const saveProject = async () => {
-    try {
-      await api.put(`/projects/${id}`, projectForm, token!);
-      addToast('Proyecto actualizado', 'success');
-      setEditProjectDialog(false);
-      load();
-    } catch (e: any) { addToast(e.message, 'error'); }
-  };
-
-  // Helper: convierte string → número finito ≥ 0 o null si es inválido.
-  const parsePositive = (raw: string | number | undefined | null): number | null => {
-    if (raw === '' || raw === null || raw === undefined) return null;
-    const n = typeof raw === 'number' ? raw : parseFloat(raw);
-    if (!Number.isFinite(n) || n < 0) return null;
-    return n;
-  };
+  const canSubmit = Boolean(token && id);
 
   const addExpense = async () => {
-    const amount = parsePositive(expenseForm.amount);
-    if (amount === null || amount <= 0) {
-      addToast('Ingresa un monto mayor a 0', 'error');
-      return;
-    }
-    if (!expenseForm.description.trim()) {
-      addToast('La descripción es obligatoria', 'error');
-      return;
-    }
-    if (!expenseForm.expenseDate) {
-      addToast('La fecha del gasto es obligatoria', 'error');
+    if (!canSubmit) return;
+    if (!expenseForm.description.trim() || Number(expenseForm.amount) <= 0) {
+      addToast('Completa descripcion y monto del gasto', 'error');
       return;
     }
     try {
-      await api.post(`/projects/${id}/expenses`, {
-        ...expenseForm,
-        amount,
-        expenseDate: new Date(expenseForm.expenseDate).toISOString(),
-      }, token!);
+      setSaving(true);
+      await api.post(
+        `/projects/${id}/expenses`,
+        {
+          ...expenseForm,
+          amount: Number(expenseForm.amount),
+          documentType: 'INVOICE',
+          documentNumber: expenseForm.invoiceNumber,
+          expenseDate: new Date(expenseForm.expenseDate).toISOString(),
+        },
+        token!,
+      );
       addToast('Gasto registrado', 'success');
-      setExpenseDialog(false);
+      setExpenseOpen(false);
+      setExpenseForm((current) => ({ ...current, description: '', amount: '', supplierName: '', supplierRuc: '', invoiceNumber: '' }));
       load();
-    } catch (e: any) { addToast(e.message, 'error'); }
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const addWorkforce = async () => {
-    const dailyRate = parsePositive(workforceForm.dailyRate);
-    const overtimeRate = parsePositive(workforceForm.overtimeRate) ?? 0;
-    const hoursRegular = parsePositive(workforceForm.hoursRegular) ?? 0;
-    const hoursOvertime = parsePositive(workforceForm.hoursOvertime) ?? 0;
+  const extractInvoice = async (file: File | null) => {
+    if (!file || !token || !id) return;
+    try {
+      setSaving(true);
+      const imageDataUrl = await fileToDataUrl(file);
+      const res = await api.post<any>(`/projects/${id}/expenses/extract-invoice`, { imageDataUrl }, token);
+      const extraction = res.extraction || {};
+      setExpenseForm((current) => ({
+        ...current,
+        supplierName: extraction.supplierName || current.supplierName,
+        supplierRuc: extraction.supplierRuc || current.supplierRuc,
+        invoiceNumber: extraction.documentNumber || current.invoiceNumber,
+        amount: extraction.totalAmount ? String(extraction.totalAmount) : current.amount,
+        expenseDate: extraction.issueDate || current.expenseDate,
+      }));
+      addToast(res.aiApplied ? 'Factura leida con IA. Revisa los campos antes de guardar.' : 'No se pudo leer automaticamente; completa manualmente.', res.aiApplied ? 'success' : 'info');
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    if (!workforceForm.workerName.trim()) {
-      addToast('El nombre del trabajador es obligatorio', 'error');
-      return;
-    }
-    if (dailyRate === null || dailyRate <= 0) {
-      addToast('Ingresa una tarifa diaria mayor a 0', 'error');
-      return;
-    }
-    if (hoursRegular + hoursOvertime <= 0) {
-      addToast('Las horas trabajadas deben ser mayores a 0', 'error');
-      return;
-    }
-    if (hoursRegular + hoursOvertime > 24) {
-      addToast('Las horas no pueden superar 24 por jornada', 'error');
-      return;
-    }
-    if (!workforceForm.workDate) {
-      addToast('La fecha de la jornada es obligatoria', 'error');
+  const addMaterial = async () => {
+    if (!canSubmit) return;
+    if (!materialForm.description.trim() || Number(materialForm.quantity) <= 0) {
+      addToast('Completa descripcion y cantidad del material', 'error');
       return;
     }
     try {
-      await api.post(`/projects/${id}/workforce`, {
-        ...workforceForm,
-        dailyRate,
-        overtimeRate,
-        hoursRegular,
-        hoursOvertime,
-        workDate: new Date(workforceForm.workDate).toISOString(),
-      }, token!);
-      addToast('Registro agregado', 'success');
-      setWorkforceDialog(false);
+      setSaving(true);
+      await api.post(`/projects/${id}/materials`, { ...materialForm, quantity: Number(materialForm.quantity) }, token!);
+      addToast('Solicitud de material creada', 'success');
+      setMaterialOpen(false);
+      setMaterialForm((current) => ({ ...current, description: '', quantity: '' }));
       load();
-    } catch (e: any) { addToast(e.message, 'error'); }
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const addEquipment = async () => {
-    const dailyRate = parsePositive(equipmentForm.dailyRate);
-    if (!equipmentForm.equipmentName.trim()) {
-      addToast('El nombre del equipo es obligatorio', 'error');
-      return;
+  const executePendingDelete = async () => {
+    if (!pendingDelete || !token || !id) return;
+    try {
+      setSaving(true);
+      if (pendingDelete.type === 'material') {
+        await api.delete(`/projects/${id}/materials/${pendingDelete.record.id}`, token);
+        addToast('Solicitud eliminada', 'success');
+      } else {
+        await api.delete(`/projects/${id}/progress/activities/${pendingDelete.record.id}`, token!);
+        addToast('Partida eliminada', 'success');
+        if (selectedActivity?.id === pendingDelete.record.id) setSelectedActivity(null);
+      }
+      setPendingDelete(null);
+      load();
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    } finally {
+      setSaving(false);
     }
-    if (dailyRate === null || dailyRate <= 0) {
-      addToast('Ingresa una tarifa mayor a 0', 'error');
-      return;
+  };
+
+  const updateMaterialStatus = async (material: any, status: string) => {
+    if (!token || !id) return;
+    try {
+      await api.patch(
+        `/projects/${id}/materials/${material.id}`,
+        {
+          status,
+          deliveredAt: status === 'DELIVERED' ? new Date().toISOString() : material.deliveredAt || null,
+        },
+        token,
+      );
+      addToast('Estado de material actualizado', 'success');
+      load();
+    } catch (error: any) {
+      addToast(error.message, 'error');
     }
-    if (!equipmentForm.startDate) {
-      addToast('La fecha de inicio es obligatoria', 'error');
+  };
+
+  const addActivity = async () => {
+    if (!canSubmit || !activityForm.name.trim()) return;
+    const maxPhotos = effectiveMaxPhotos(companySettings);
+    const photos = activityForm.photos.slice(0, maxPhotos);
+    const wantsFirstLog =
+      photos.length > 0 || Boolean(activityForm.initialLogText.trim()) || Boolean(activityForm.initialProgressDelta && Number(activityForm.initialProgressDelta) > 0);
+    try {
+      setSaving(true);
+      const created = await api.post<{ id: string }>(
+        `/projects/${id}/progress/activities`,
+        { name: activityForm.name, description: activityForm.description },
+        token!,
+      );
+      if (wantsFirstLog) {
+        const delta = Math.min(100, Math.max(0, Number(activityForm.initialProgressDelta || 0)));
+        const rawText =
+          activityForm.initialLogText.trim() ||
+          (photos.length > 0 ? 'Registro inicial de obra con fotografías.' : 'Primer registro de avance.');
+        await api.post(
+          `/projects/${id}/progress/activities/${created.id}/logs`,
+          {
+            rawText,
+            progressDelta: delta,
+            logDate: new Date().toISOString(),
+            photos,
+          },
+          token!,
+        );
+      }
+      addToast('Partida creada', 'success');
+      setActivityOpen(false);
+      setActivityForm({
+        name: '',
+        description: '',
+        initialLogText: '',
+        initialProgressDelta: '',
+        photos: [],
+      });
+      if (activityPhotosInputRef.current) activityPhotosInputRef.current.value = '';
+      load();
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addDailyLog = async () => {
+    if (!canSubmit || !selectedActivity) return;
+    if (!logForm.rawText.trim()) {
+      addToast('Describe brevemente el trabajo realizado', 'error');
       return;
     }
     try {
-      await api.post(`/projects/${id}/equipment`, {
-        ...equipmentForm,
-        dailyRate,
-        startDate: new Date(equipmentForm.startDate).toISOString(),
-      }, token!);
-      addToast('Equipo registrado', 'success');
-      setEquipmentDialog(false);
+      setSaving(true);
+      await api.post(
+        `/projects/${id}/progress/activities/${selectedActivity.id}/logs`,
+        {
+          rawText: logForm.rawText,
+          progressDelta: Number(logForm.progressDelta || 0),
+          logDate: new Date(logForm.logDate).toISOString(),
+          photos: logForm.photos,
+        },
+        token!,
+      );
+      addToast('Registro diario guardado', 'success');
+      setSelectedActivity(null);
+      setLogForm({ rawText: '', progressDelta: '', logDate: new Date().toISOString().slice(0, 10), photos: [] });
       load();
-    } catch (e: any) { addToast(e.message, 'error'); }
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
-  if (!project) return <p className="text-center py-8 text-muted-foreground">Proyecto no encontrado</p>;
+  const generateReport = async () => {
+    if (!token || !id) return;
+    try {
+      const report = await api.get<any>(`/projects/${id}/progress/report`, token);
+      const popup = window.open('', '_blank');
+      if (!popup) {
+        addToast('Permite ventanas emergentes para ver el informe', 'error');
+        return;
+      }
+      popup.document.write(renderProgressReport(report));
+      popup.document.close();
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    }
+  };
 
-  const budgetPercent = summary?.percentUsed || 0;
+  const openLogDialog = (activity: any) => {
+    setSelectedActivity(activity);
+    setLogForm({ rawText: '', progressDelta: '', logDate: new Date().toISOString().slice(0, 10), photos: [] });
+  };
+
+  const projectClient = useMemo(() => {
+    if (!project) return '';
+    return project.company?.tradeName || project.company?.businessName || (project.isInternal ? 'FYM Technologies' : 'Sin cliente asociado');
+  }, [project]);
+
+  if (loading) {
+    return <div className="flex h-64 items-center justify-center text-sm font-medium text-slate-500">Cargando proyecto...</div>;
+  }
+
+  if (!project) {
+    return <div className="py-12 text-center text-sm text-slate-500">Proyecto no encontrado</div>;
+  }
 
   return (
-    <div className="space-y-8 font-jakarta animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Premium Header Section */}
-      <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-start gap-6">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-12 w-12 rounded-2xl bg-white/5 dark:bg-slate-900/50 border border-white/5 hover:bg-white/10 transition-all group shrink-0" 
-            onClick={() => router.push('/projects')}
-          >
-            <ArrowLeft className="h-5 w-5 text-slate-400 group-hover:text-primary transition-colors" />
+    <div className="space-y-7 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <section className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push('/projects')} className="h-10 w-10 rounded-lg">
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-          
-          <div className="space-y-2">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="px-3 py-1 bg-slate-950 border border-white/10 rounded-lg shadow-xl">
-                <span className="text-2xl font-black font-mono tracking-tighter text-white">{project.projectCode}</span>
-              </div>
-              <div className="h-2 w-2 rounded-full bg-slate-700" />
-              <StatusBadge status={project.status} size="lg" className="h-8 px-4 rounded-xl font-black text-[10px] uppercase tracking-[0.2em]" />
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md bg-slate-900 px-2.5 py-1 font-mono text-sm font-black text-white">{project.projectCode}</span>
+              <StatusBadge status={project.status} />
+              {project.isInternal && <Badge className="rounded-md bg-indigo-600">Proyecto Z</Badge>}
             </div>
-            
-            <div className="space-y-1">
-              <h1 className="text-4xl font-black tracking-tighter text-slate-900 dark:text-white leading-none uppercase">
-                {project.name}
-              </h1>
-              {project.company && (
-                <div className="flex items-center gap-3 mt-2 flex-wrap">
-                  <div className="px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-[10px] font-black text-primary uppercase tracking-widest">
-                    Cliente Partner
-                  </div>
-                  <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">{project.company.tradeName || project.company.businessName || project.company.name}</p>
-                </div>
-              )}
-              {project.quotationId && (
-                <div className="mt-3">
-                  <Link
-                    href={`/quotations/detail?id=${project.quotationId}`}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400"
-                    title="Ver cotización origen"
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    {project.quotation?.quotationNumber
-                      ? `Cotización ${project.quotation.quotationNumber}`
-                      : 'Ver cotización origen'}
-                  </Link>
-                </div>
-              )}
-            </div>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900">{project.name}</h1>
+            <p className="mt-1 text-sm font-semibold text-slate-500">{projectClient}</p>
+            {isClient && (
+              <p className="mt-2 inline-flex rounded-md border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-black uppercase tracking-widest text-primary">
+                Vista limitada de cliente
+              </p>
+            )}
+            {project.description && <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">{project.description}</p>}
           </div>
         </div>
 
-        {canManage ? (
-          <div className="flex items-center gap-3 bg-slate-950/20 p-2 rounded-[1.5rem] border border-white/[0.05] backdrop-blur-xl self-start md:self-center shadow-2xl">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-10 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5"
-              onClick={openEditProject}
-            >
-              <Pencil className="mr-2 h-4 w-4" />
-              Ajustar
-            </Button>
+        <Button onClick={generateReport} className="self-start">
+          <Printer className="mr-2 h-4 w-4" />
+          Generar informe
+        </Button>
+      </section>
 
-            <div className="w-px h-6 bg-white/5 mx-1 hidden sm:block" />
+      {!isClient && <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Costos ejecutados" value={currency(summary?.totalSpent || 0)} hint={`${Math.round(summary?.percentUsed || 0)}% del presupuesto`} icon={DollarSign} />
+        <MetricCard label="Materiales pendientes" value={pendingMaterials} hint={summary?.materialAlert?.level || 'GREEN'} icon={PackageCheck} />
+        <MetricCard label="Avance promedio" value={`${progressAverage}%`} hint={`${summary?.progressSummary?.activities || 0} partidas`} icon={ClipboardList} />
+      </section>}
 
-            {project.status === 'PLANNING' && (
-              <Button 
-                size="sm" 
-                className="h-10 px-8 rounded-xl bg-primary text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-primary/20 hover:opacity-90"
-                onClick={() => updateStatus('IN_PROGRESS')}
-              >
-                Lanzar Ejecución
-              </Button>
-            )}
-            {project.status === 'IN_PROGRESS' && (
-              <div className="flex gap-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-10 px-6 rounded-xl text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 font-black text-[10px] uppercase tracking-widest"
-                  onClick={() => updateStatus('PAUSED')}
-                >
-                  Pausar
-                </Button>
-                <Button 
-                  size="sm" 
-                  className="h-10 px-8 rounded-xl bg-emerald-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:opacity-90"
-                  onClick={() => updateStatus('COMPLETED')}
-                >
-                  Finalizar
-                </Button>
+      <Tabs defaultValue="progress" className="space-y-5">
+        <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-lg border border-slate-200 bg-white p-1">
+          <TabsTrigger value="progress" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
+            <ClipboardList className="mr-2 h-4 w-4" />
+            Avances
+          </TabsTrigger>
+          {!isClient && <TabsTrigger value="materials" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
+            <PackageCheck className="mr-2 h-4 w-4" />
+            Lista de materiales
+          </TabsTrigger>}
+          {!isClient && <TabsTrigger value="costs" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
+            <DollarSign className="mr-2 h-4 w-4" />
+            Costos
+          </TabsTrigger>}
+        </TabsList>
+
+        <TabsContent value="progress" className="mt-0">
+          <Card className="rounded-lg border-slate-200">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Cuaderno de obras digital</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">Partidas, fotos diarias, texto mejorado con IA y porcentaje acumulado.</p>
               </div>
-            )}
-            {project.status === 'PAUSED' && (
-              <Button 
-                size="sm" 
-                className="h-10 px-8 rounded-xl bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:opacity-90"
-                onClick={() => updateStatus('IN_PROGRESS')}
-              >
-                Reanudar Flujo
-              </Button>
-            )}
-            {project.status === 'COMPLETED' && (
-              <Button 
-                size="sm" 
-                className="h-10 px-8 rounded-xl bg-slate-700 text-white font-black text-[10px] uppercase tracking-widest shadow-xl hover:opacity-90"
-                onClick={() => updateStatus('CLOSED')}
-              >
-                Cerrar Proyecto
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="self-start md:self-center px-4 py-2 rounded-xl bg-slate-950/20 border border-white/[0.05] text-[10px] font-black uppercase tracking-widest text-slate-500">
-            Sólo lectura
-          </div>
-        )}
-      </div>
-
-      {/* Industrial Summary Metrics */}
-      {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden group shadow-xl">
-            <CardContent className="p-8">
-              <div className="flex flex-col gap-4">
-                <div className="flex justify-between items-start">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover:scale-110 transition-transform">
-                    <DollarSign className="h-6 w-6 text-indigo-500" />
-                  </div>
-                  <div className="px-2 py-0.5 rounded bg-slate-950/50 text-[8px] font-black text-slate-500 uppercase tracking-widest">Target</div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Presupuesto Asignado</p>
-                  <p className="text-3xl font-black font-mono text-slate-900 dark:text-white tabular-nums tracking-tighter">
-                    <span className="text-xs font-bold text-slate-400 mr-2">S/</span>
-                    {Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(summary.budget)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden group shadow-xl">
-            <CardContent className="p-8">
-              <div className="flex flex-col gap-4">
-                <div className="flex justify-between items-start">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border group-hover:scale-110 transition-transform ${budgetPercent > 90 ? 'bg-rose-500/10 border-rose-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
-                    <div className={`h-6 w-6 ${budgetPercent > 90 ? 'text-rose-500' : 'text-amber-500'}`}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m3 11 18-5v12L3 14V11z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/><path d="M11.3 11a3 3 0 1 0-2.8 4"/><path d="M2 13h1"/></svg>
-                    </div>
-                  </div>
-                  <div className="px-2 py-0.5 rounded bg-slate-950/50 text-[8px] font-black text-slate-500 uppercase tracking-widest">Real Time</div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Inversión Ejecutada</p>
-                  <p className={`text-3xl font-black font-mono tabular-nums tracking-tighter ${budgetPercent > 90 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
-                    <span className="text-xs font-bold text-slate-400 mr-2">S/</span>
-                    {Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(summary.totalSpent)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden group shadow-xl">
-            <CardContent className="p-8">
-              <div className="flex flex-col gap-4">
-                <div className="flex justify-between items-start">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border group-hover:scale-110 transition-transform ${summary.remaining < 0 ? 'bg-rose-500/10 border-rose-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
-                    <div className={`h-6 w-6 ${summary.remaining < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m16 10-4 4-4-4"/></svg>
-                    </div>
-                  </div>
-                  <div className="px-2 py-0.5 rounded bg-slate-950/50 text-[8px] font-black text-slate-500 uppercase tracking-widest">Flow</div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Diferencial Operativo</p>
-                  <p className={`text-3xl font-black font-mono tabular-nums tracking-tighter ${summary.remaining < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                    <span className="text-xs font-bold text-slate-400 mr-2">S/</span>
-                    {Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(summary.remaining)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className={`border-white/[0.05] backdrop-blur-xl rounded-[2rem] overflow-hidden group shadow-xl transition-all ${budgetPercent > 90 ? 'bg-rose-500/5 border-rose-500/20' : 'bg-slate-900 dark:bg-slate-950'}`}>
-            <CardContent className="p-8">
-              <div className="flex flex-col h-full justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Ratio de Eficiencia</p>
-                    <div className={`px-2 py-1 rounded-lg font-mono font-black text-xs ${budgetPercent > 90 ? 'bg-rose-500 text-white' : 'bg-primary text-white'}`}>
-                      {budgetPercent.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="h-4 w-full rounded-full bg-slate-800/50 overflow-hidden border border-white/5 p-1">
+              {!isClient && <Button onClick={() => setActivityOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Nueva partida
+              </Button>}
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {activities.length === 0 ? (
+                  <EmptyState text="Aun no hay partidas registradas." />
+                ) : (
+                  activities.map((activity) => (
                     <div
-                      className={`h-full rounded-full transition-all duration-1000 ease-out shadow-lg ${
-                        budgetPercent > 95 ? 'bg-gradient-to-r from-rose-500 to-rose-600' : 
-                        budgetPercent > 75 ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 
-                        'bg-gradient-to-r from-primary to-indigo-600'
-                      }`}
-                      style={{ width: `${Math.min(budgetPercent, 100)}%` }}
-                    />
-                  </div>
-                </div>
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-6 text-right">Utilización del Recurso</p>
+                      key={activity.id}
+                      role={isClient ? undefined : 'button'}
+                      tabIndex={isClient ? undefined : 0}
+                      onClick={() => !isClient && openLogDialog(activity)}
+                      onKeyDown={(e) => {
+                        if (isClient) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openLogDialog(activity);
+                        }
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:shadow-md cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-black text-slate-900">{activity.name}</h3>
+                          <p className="mt-1 line-clamp-2 text-sm text-slate-500">{activity.description || 'Sin descripcion'}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {!isClient && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 text-slate-400 hover:text-destructive"
+                              title="Eliminar partida"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingDelete({ type: 'activity', record: activity });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <span className="font-mono text-xl font-black text-primary">{Math.round(activity.progressPercent || 0)}%</span>
+                        </div>
+                      </div>
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full bg-primary" style={{ width: `${Math.min(100, activity.progressPercent || 0)}%` }} />
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {(activity.logs || []).slice(0, 2).map((log: any) => (
+                          <div key={log.id} className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                            <p className="font-bold text-slate-800">{formatDate(log.logDate)} · +{log.progressDelta}%</p>
+                            <p className="mt-1 line-clamp-2">{log.improvedText}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
-        </div>
-      )}
-
-      {/* Main Operations Tabs */}
-      <Tabs defaultValue="expenses" className="w-full space-y-8">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <TabsList className="bg-slate-950/20 border border-white/[0.05] p-1.5 rounded-2xl h-auto self-start">
-            <TabsTrigger value="management" className="rounded-xl px-8 py-3 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
-              <FileText className="mr-2 h-4 w-4" />
-              Gestión de Proyecto
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="rounded-xl px-8 py-3 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
-              <DollarSign className="mr-2 h-4 w-4" />
-              Insumos & Gastos
-            </TabsTrigger>
-            <TabsTrigger value="workforce" className="rounded-xl px-8 py-3 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
-              <Users className="mr-2 h-4 w-4" />
-              Recurso Humano
-            </TabsTrigger>
-            <TabsTrigger value="equipment" className="rounded-xl px-8 py-3 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
-              <Wrench className="mr-2 h-4 w-4" />
-              Maquinaria & Activos
-            </TabsTrigger>
-          </TabsList>
-
-          {canRegisterField && (
-            <div className="flex gap-4">
-              <TabsContent value="expenses" className="m-0">
-                <Button 
-                  onClick={() => { setExpenseForm({ expenseCategory: 'MATERIAL', description: '', amount: '', supplierName: '', documentType: 'NONE', documentNumber: '', paymentMethod: 'CASH', expenseDate: new Date().toISOString().split('T')[0] }); setExpenseDialog(true); }}
-                  className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
-                >
-                  <Plus className="mr-2 h-5 w-5" />
-                  Registrar Gasto
-                </Button>
-              </TabsContent>
-              <TabsContent value="workforce" className="m-0">
-                <Button 
-                  onClick={() => { setWorkforceForm({ workerName: '', workerRole: 'OPERARIO', workDate: new Date().toISOString().split('T')[0], hoursRegular: '8', hoursOvertime: '0', dailyRate: '', overtimeRate: '0' }); setWorkforceDialog(true); }}
-                  className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
-                >
-                  <Plus className="mr-2 h-5 w-5" />
-                  Nueva Jornada
-                </Button>
-              </TabsContent>
-              <TabsContent value="equipment" className="m-0">
-                <Button 
-                  onClick={() => { setEquipmentForm({ equipmentName: '', supplierName: '', rentalType: 'DAILY', startDate: new Date().toISOString().split('T')[0], dailyRate: '' }); setEquipmentDialog(true); }}
-                  className="h-12 px-8 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest text-[10px] shadow-xl transition-all hover:scale-105 active:scale-95"
-                >
-                  <Plus className="mr-2 h-5 w-5" />
-                  Vincular Activo
-                </Button>
-              </TabsContent>
-            </div>
-          )}
-        </div>
-
-        <TabsContent value="management" className="mt-0 animate-in fade-in slide-in-from-left-4 duration-500 focus-visible:outline-none">
-          <ProjectManagementModule projectId={id!} />
         </TabsContent>
 
-        <TabsContent value="expenses" className="mt-0 animate-in fade-in slide-in-from-left-4 duration-500 focus-visible:outline-none">
-          <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden">
-            <div className="overflow-x-auto">
+        <TabsContent value="materials" className="mt-0">
+          <Card className="rounded-lg border-slate-200">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Lista dinamica de materiales</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">Solicitud de campo, seguimiento logistico, fecha limite y entrega real.</p>
+              </div>
+              <Button onClick={() => setMaterialOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Solicitar material
+              </Button>
+            </CardHeader>
+            <CardContent>
               <Table>
-                <TableHeader className="bg-slate-950/20 border-b border-white/[0.05]">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6 pl-8">Cronología</TableHead>
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Ecosistema</TableHead>
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Descripción Operativa</TableHead>
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Proveedor Partner</TableHead>
-                    <TableHead className="text-right font-black uppercase tracking-widest text-[10px] text-slate-500 py-6 pr-8">Inversión (S/)</TableHead>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Descripcion</TableHead>
+                    <TableHead>Cantidad</TableHead>
+                    <TableHead>Fecha limite</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Entrega real</TableHead>
+                    <TableHead className="w-[52px] text-right" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(project.expenses || []).length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-24 text-slate-400">
-                        <div className="flex flex-col items-center gap-4 opacity-50">
-                          <div className="p-4 bg-slate-950/30 rounded-full border border-white/5">
-                            <DollarSign className="h-8 w-8 text-slate-600" />
-                          </div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.2em]">Cero registros detectados</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : project.expenses.map((e: any) => (
-                    <TableRow key={e.id} className="border-white/[0.03] hover:bg-white/5 transition-colors group">
-                      <TableCell className="py-6 pl-8">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">
-                            {new Date(e.expenseDate).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}
-                          </span>
-                          <span className="text-[10px] font-medium text-slate-500">{new Date(e.expenseDate).getFullYear()}</span>
-                        </div>
-                      </TableCell>
+                  {materials.length === 0 ? (
+                    <TableRow><TableCell colSpan={8}><EmptyState text="No hay solicitudes de materiales." /></TableCell></TableRow>
+                  ) : materials.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-mono font-black">{item.itemNumber}</TableCell>
+                      <TableCell>{typeLabel(item.type)}</TableCell>
+                      <TableCell className="font-semibold">{item.description}</TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell><UrgencyBadge item={item} /> {formatDate(item.requiredDate)}</TableCell>
                       <TableCell>
-                        <div className="inline-flex px-3 py-1 bg-slate-950/50 rounded-lg border border-white/5 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                          {e.expenseCategory}
-                        </div>
+                        <Select value={item.status} onValueChange={(value) => updateMaterialStatus(item, value)}>
+                          <SelectTrigger className="h-9 w-[150px]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {MATERIAL_STATUSES.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
                       </TableCell>
-                      <TableCell className="max-w-md">
-                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-tight uppercase tracking-tight">{e.description}</p>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{e.supplierName || '—'}</span>
-                      </TableCell>
-                      <TableCell className="text-right pr-8">
-                        <span className="text-lg font-black font-mono text-slate-900 dark:text-white tabular-nums tracking-tighter">
-                          {Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(e.amount)}
-                        </span>
+                      <TableCell>{item.deliveredAt ? formatDate(item.deliveredAt) : '-'}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-slate-400 hover:text-destructive"
+                          title="Eliminar solicitud"
+                          onClick={() => setPendingDelete({ type: 'material', record: item })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="workforce" className="mt-0 animate-in fade-in slide-in-from-bottom-4 duration-500 focus-visible:outline-none">
-          <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden">
-            <div className="overflow-x-auto">
+        <TabsContent value="costs" className="mt-0">
+          <Card className="rounded-lg border-slate-200">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Costos y facturacion</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">Gastos del proyecto, OCR de factura y alimentacion de base historica de precios.</p>
+              </div>
+              <Button onClick={() => setExpenseOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Registrar gasto
+              </Button>
+            </CardHeader>
+            <CardContent>
               <Table>
-                <TableHeader className="bg-slate-950/20 border-b border-white/[0.05]">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6 pl-8">Fecha</TableHead>
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Trabajador</TableHead>
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Rol Técnico</TableHead>
-                    <TableHead className="text-right font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Carga Horaria</TableHead>
-                    <TableHead className="text-right font-black uppercase tracking-widest text-[10px] text-slate-500 py-6 pr-8">Costo Total (S/)</TableHead>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Codigo</TableHead>
+                    <TableHead>Descripcion</TableHead>
+                    <TableHead>Proveedor</TableHead>
+                    <TableHead>RUC</TableHead>
+                    <TableHead>Factura</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(project.workforceLogs || []).length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-24 text-slate-400">
-                        <div className="flex flex-col items-center gap-4 opacity-50">
-                          <div className="p-4 bg-slate-950/30 rounded-full border border-white/5">
-                            <Users className="h-8 w-8 text-slate-600" />
-                          </div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.2em]">Sin registros de personal</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : project.workforceLogs.map((w: any) => (
-                    <TableRow key={w.id} className="border-white/[0.03] hover:bg-white/5 transition-colors group">
-                      <TableCell className="py-6 pl-8 font-bold text-slate-500 uppercase text-xs">
-                        {new Date(w.workDate).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-xl bg-slate-950 border border-white/10 flex items-center justify-center font-black text-white text-sm">
-                            {w.workerName.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">{w.workerName}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="inline-flex px-3 py-1 bg-indigo-500/10 rounded-lg border border-indigo-500/20 text-[9px] font-black text-indigo-500 uppercase tracking-widest">
-                          {w.workerRole}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-col items-end">
-                          <span className="text-xs font-black font-mono text-slate-700 dark:text-slate-300">Reg: {w.hoursRegular}h</span>
-                          {w.hoursOvertime > 0 && <span className="text-[9px] font-black font-mono text-amber-500">Ext: +{w.hoursOvertime}h</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right pr-8">
-                        <span className="text-lg font-black font-mono text-slate-900 dark:text-white tabular-nums tracking-tighter">
-                          {Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(w.totalCost)}
-                        </span>
-                      </TableCell>
+                  {expenses.length === 0 ? (
+                    <TableRow><TableCell colSpan={7}><EmptyState text="Aun no hay gastos registrados." /></TableCell></TableRow>
+                  ) : expenses.map((expense: any) => (
+                    <TableRow key={expense.id}>
+                      <TableCell className="font-mono font-black">{project.projectCode}</TableCell>
+                      <TableCell className="font-semibold">{expense.description}</TableCell>
+                      <TableCell>{expense.supplierName || '-'}</TableCell>
+                      <TableCell>{expense.supplierRuc || '-'}</TableCell>
+                      <TableCell>{expense.invoiceNumber || expense.documentNumber || '-'}</TableCell>
+                      <TableCell>{formatDate(expense.expenseDate)}</TableCell>
+                      <TableCell className="text-right font-mono font-black">{currency(expense.amount || 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="equipment" className="mt-0 animate-in fade-in slide-in-from-right-4 duration-500 focus-visible:outline-none">
-          <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader className="bg-slate-950/20 border-b border-white/[0.05]">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6 pl-8">Activo / Equipo</TableHead>
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Proveedor</TableHead>
-                    <TableHead className="font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Periodo Operativo</TableHead>
-                    <TableHead className="text-right font-black uppercase tracking-widest text-[10px] text-slate-500 py-6">Tarifa Diaria</TableHead>
-                    <TableHead className="text-right font-black uppercase tracking-widest text-[10px] text-slate-500 py-6 pr-8">Costo Total (S/)</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(project.equipmentLogs || []).length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-24 text-slate-400">
-                        <div className="flex flex-col items-center gap-4 opacity-50">
-                          <div className="p-4 bg-slate-950/30 rounded-full border border-white/5">
-                            <Wrench className="h-8 w-8 text-slate-600" />
-                          </div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.2em]">No se han vinculado activos</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : project.equipmentLogs.map((eq: any) => (
-                    <TableRow key={eq.id} className="border-white/[0.03] hover:bg-white/5 transition-colors group">
-                      <TableCell className="py-6 pl-8">
-                        <div className="flex items-center gap-4">
-                          <div className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center text-white">
-                            <Wrench className="h-5 w-5 opacity-50" />
-                          </div>
-                          <span className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">{eq.equipmentName}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{eq.supplierName || 'Propio'}</span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="px-2 py-1 bg-slate-950/50 rounded-lg text-[9px] font-black font-mono text-slate-400 border border-white/5">
-                            {new Date(eq.startDate).toLocaleDateString('es-PE')}
-                          </div>
-                          <ArrowLeft className="h-3 w-3 rotate-180 text-slate-700" />
-                          {eq.endDate ? (
-                            <div className="px-2 py-1 bg-slate-950/50 rounded-lg text-[9px] font-black font-mono text-slate-400 border border-white/5">
-                              {new Date(eq.endDate).toLocaleDateString('es-PE')}
-                            </div>
-                          ) : (
-                            <div className="px-2 py-1 bg-emerald-500/10 rounded-lg text-[8px] font-black text-emerald-500 border border-emerald-500/20 uppercase tracking-widest animate-pulse">
-                              Active Usage
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="text-xs font-black font-mono text-slate-500 tabular-nums tracking-tighter">
-                          S/ {Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(eq.dailyRate)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right pr-8">
-                        <span className="text-lg font-black font-mono text-slate-900 dark:text-white tabular-nums tracking-tighter">
-                          {Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(eq.totalCost)}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Modernized Dialogs */}
-      <Dialog open={expenseDialog} onOpenChange={setExpenseDialog}>
-        <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border border-white/10 shadow-2xl bg-white dark:bg-slate-950">
-          <div className="bg-gradient-to-br from-slate-900 to-black px-8 py-10 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 blur-3xl rounded-full -mr-16 -mt-16" />
-            <DialogHeader className="relative z-10">
-              <DialogTitle className="text-3xl font-black uppercase tracking-tighter flex items-center gap-4">
-                <div className="p-3 bg-primary/20 rounded-2xl border border-primary/30 backdrop-blur-md shadow-xl shadow-primary/20">
-                  <DollarSign className="h-7 w-7 text-primary" />
-                </div>
-                Registrar Gasto
-              </DialogTitle>
-              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-4 opacity-70">
-                Afectación Directa al Presupuesto Operativo
-              </p>
-            </DialogHeader>
+      <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Registrar gasto</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Categoria">
+              <Select value={expenseForm.expenseCategory} onValueChange={(value) => setExpenseForm((current) => ({ ...current, expenseCategory: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{EXPENSE_CATEGORIES.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Fecha">
+              <Input type="date" value={expenseForm.expenseDate} onChange={(event) => setExpenseForm((current) => ({ ...current, expenseDate: event.target.value }))} />
+            </Field>
+            <Field label="Descripcion del pago">
+              <Input value={expenseForm.description} onChange={(event) => setExpenseForm((current) => ({ ...current, description: event.target.value }))} placeholder="Cemento y transporte" />
+            </Field>
+            <Field label="Monto">
+              <Input type="number" step="0.01" value={expenseForm.amount} onChange={(event) => setExpenseForm((current) => ({ ...current, amount: event.target.value }))} />
+            </Field>
+            <Field label="Proveedor">
+              <Input value={expenseForm.supplierName} onChange={(event) => setExpenseForm((current) => ({ ...current, supplierName: event.target.value }))} />
+            </Field>
+            <Field label="RUC">
+              <Input value={expenseForm.supplierRuc} onChange={(event) => setExpenseForm((current) => ({ ...current, supplierRuc: event.target.value }))} />
+            </Field>
+            <Field label="Numero de factura">
+              <Input value={expenseForm.invoiceNumber} onChange={(event) => setExpenseForm((current) => ({ ...current, invoiceNumber: event.target.value }))} />
+            </Field>
+            <Field label="Foto de factura">
+              <label className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 text-sm font-bold text-slate-600 hover:bg-slate-50">
+                <Upload className="mr-2 h-4 w-4" />
+                Leer con IA
+                <input type="file" accept="image/*" className="hidden" onChange={(event) => extractInvoice(event.target.files?.[0] || null)} />
+              </label>
+            </Field>
           </div>
-          
-          <div className="p-8 space-y-8">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Clasificación</Label>
-                <Select value={expenseForm.expenseCategory} onValueChange={v => setExpenseForm(f => ({ ...f, expenseCategory: v }))}>
-                  <SelectTrigger className="h-12 bg-slate-950/50 border-white/5 rounded-xl text-[10px] font-black uppercase tracking-widest">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-2xl border-white/10 bg-slate-950 text-white">
-                    {EXPENSE_CATEGORIES.map(c => (
-                      <SelectItem key={c} value={c} className="rounded-xl focus:bg-primary text-[10px] font-black uppercase tracking-widest py-3">
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Fecha Contable</Label>
-                <Input type="date" className="h-12 bg-slate-950/50 border-white/5 rounded-xl font-mono text-sm font-bold text-center" value={expenseForm.expenseDate} onChange={e => setExpenseForm(f => ({ ...f, expenseDate: e.target.value }))} />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Descripción de la Transacción</Label>
-              <Input className="h-12 bg-slate-950/50 border-white/5 rounded-xl text-sm font-bold" placeholder="Ej: Aceros Arequipa - Lote 500 unidades" value={expenseForm.description} onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Valor Bruto (PEN)</Label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-black text-sm">S/</span>
-                  <Input type="number" step="0.01" className="h-14 bg-slate-950 border-primary/20 rounded-xl pl-10 font-mono text-xl font-black focus:ring-primary/20" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} />
-                </div>
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Identidad Proveedor</Label>
-                <Input className="h-14 bg-slate-950/50 border-white/5 rounded-xl text-sm font-bold uppercase tracking-tight" placeholder="Nombre comercial" value={expenseForm.supplierName} onChange={e => setExpenseForm(f => ({ ...f, supplierName: e.target.value }))} />
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="p-8 bg-slate-950/50 border-t border-white/5 flex gap-3">
-            <Button variant="ghost" className="h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-[10px] text-slate-500 hover:bg-white/5" onClick={() => setExpenseDialog(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={addExpense} className="h-14 flex-1 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-primary/30 hover:opacity-90">
-              Ejecutar Registro
-            </Button>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExpenseOpen(false)}>Cancelar</Button>
+            <Button onClick={addExpense} disabled={saving}>Guardar gasto</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Workforce Dialog Modernized */}
-      <Dialog open={workforceDialog} onOpenChange={setWorkforceDialog}>
-        <DialogContent className="max-w-lg rounded-[2.5rem] p-0 overflow-hidden border border-white/10 shadow-2xl bg-white dark:bg-slate-950">
-          <div className="bg-gradient-to-br from-indigo-900 to-slate-950 px-8 py-10 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 blur-3xl rounded-full -mr-16 -mt-16" />
-            <DialogHeader className="relative z-10">
-              <DialogTitle className="text-3xl font-black uppercase tracking-tighter flex items-center gap-4">
-                <div className="p-3 bg-indigo-500/20 rounded-2xl border border-indigo-500/30 backdrop-blur-md shadow-xl shadow-indigo-500/20">
-                  <Users className="h-7 w-7 text-indigo-400" />
-                </div>
-                Reporte de Jornada
-              </DialogTitle>
-              <p className="text-indigo-300/70 font-bold text-xs uppercase tracking-widest mt-4 opacity-70">
-                Monitoreo de Capital Humano en Operaciones
-              </p>
-            </DialogHeader>
-          </div>
-          
-          <div className="p-8 space-y-8">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Nombre del Operador</Label>
-                <Input className="h-12 bg-slate-950/50 border-white/5 rounded-xl text-sm font-bold uppercase" placeholder="Apellido, Nombre" value={workforceForm.workerName} onChange={e => setWorkforceForm(f => ({ ...f, workerName: e.target.value }))} />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Especialidad</Label>
-                <Select value={workforceForm.workerRole} onValueChange={v => setWorkforceForm(f => ({ ...f, workerRole: v }))}>
-                  <SelectTrigger className="h-12 bg-slate-950/50 border-white/5 rounded-xl text-[10px] font-black uppercase tracking-widest">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-2xl bg-slate-950 border-white/10 text-white">
-                    {WORKER_ROLES.map(r => (
-                      <SelectItem key={r} value={r} className="rounded-xl focus:bg-indigo-600 text-[10px] font-black uppercase tracking-widest py-3">
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-6">
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Fecha</Label>
-                <Input type="date" className="h-12 bg-slate-950/50 border-white/5 rounded-xl font-mono text-sm font-bold text-center" value={workforceForm.workDate} onChange={e => setWorkforceForm(f => ({ ...f, workDate: e.target.value }))} />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Horas Base</Label>
-                <Input type="number" className="h-12 bg-slate-950 border-white/10 rounded-xl font-mono text-lg font-black text-center focus:ring-indigo-500/20" value={workforceForm.hoursRegular} onChange={e => setWorkforceForm(f => ({ ...f, hoursRegular: e.target.value }))} />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Overtime</Label>
-                <Input type="number" className="h-12 bg-slate-950 border-amber-500/20 rounded-xl font-mono text-lg font-black text-center text-amber-500 focus:ring-amber-500/10" value={workforceForm.hoursOvertime} onChange={e => setWorkforceForm(f => ({ ...f, hoursOvertime: e.target.value }))} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Costo/Día Base (S/)</Label>
-                <Input type="number" step="0.01" className="h-14 bg-slate-950 border-white/5 rounded-xl font-mono text-xl font-black text-center" value={workforceForm.dailyRate} onChange={e => setWorkforceForm(f => ({ ...f, dailyRate: e.target.value }))} />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Extra Hr Rate (S/)</Label>
-                <Input type="number" step="0.01" className="h-14 bg-slate-950 border-white/5 rounded-xl font-mono text-xl font-black text-center text-amber-500" value={workforceForm.overtimeRate} onChange={e => setWorkforceForm(f => ({ ...f, overtimeRate: e.target.value }))} />
-              </div>
+      <Dialog open={materialOpen} onOpenChange={setMaterialOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Solicitar material</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <Field label="Tipo">
+              <Select value={materialForm.type} onValueChange={(value) => setMaterialForm((current) => ({ ...current, type: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{MATERIAL_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Descripcion / marca / modelo">
+              <Input value={materialForm.description} onChange={(event) => setMaterialForm((current) => ({ ...current, description: event.target.value }))} placeholder="Cemento Sol" />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Cantidad">
+                <Input type="number" value={materialForm.quantity} onChange={(event) => setMaterialForm((current) => ({ ...current, quantity: event.target.value }))} />
+              </Field>
+              <Field label="Fecha limite">
+                <Input type="date" value={materialForm.requiredDate} onChange={(event) => setMaterialForm((current) => ({ ...current, requiredDate: event.target.value }))} />
+              </Field>
             </div>
           </div>
-
-          <DialogFooter className="p-8 bg-slate-950/50 border-t border-white/5 flex gap-3">
-            <Button variant="ghost" className="h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-[10px] text-slate-500 hover:bg-white/5" onClick={() => setWorkforceDialog(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={addWorkforce} className="h-14 flex-1 rounded-2xl bg-indigo-600 text-white font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-indigo-500/30 hover:opacity-90">
-              Validar Jornada
-            </Button>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMaterialOpen(false)}>Cancelar</Button>
+            <Button onClick={addMaterial} disabled={saving}>Crear solicitud</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Equipment Dialog Modernized */}
-      <Dialog open={equipmentDialog} onOpenChange={setEquipmentDialog}>
-        <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border border-white/10 shadow-2xl bg-white dark:bg-slate-950">
-          <div className="bg-gradient-to-br from-slate-900 to-black px-8 py-10 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-slate-700/20 blur-3xl rounded-full -mr-16 -mt-16" />
-            <DialogHeader className="relative z-10">
-              <DialogTitle className="text-3xl font-black uppercase tracking-tighter flex items-center gap-4">
-                <div className="p-3 bg-white/10 rounded-2xl border border-white/10 backdrop-blur-md shadow-xl">
-                  <Wrench className="h-7 w-7 text-slate-400" />
-                </div>
-                Asignación de Activo
-              </DialogTitle>
-              <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-4 opacity-70">
-                Control de Despliegue de Maquinaria
-              </p>
-            </DialogHeader>
-          </div>
-          
-          <div className="p-8 space-y-8">
-            <div className="space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Identificación del Activo</Label>
-              <Input className="h-14 bg-slate-950/50 border-white/5 rounded-xl text-sm font-bold uppercase tracking-tight" placeholder="Ej: Compresor de Aire Industrial" value={equipmentForm.equipmentName} onChange={e => setEquipmentForm(f => ({ ...f, equipmentName: e.target.value }))} />
-            </div>
-
-            <div className="space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Entidad de Alquiler / Propiedad</Label>
-              <Input className="h-12 bg-slate-950/50 border-white/5 rounded-xl text-sm font-bold uppercase" placeholder="Empresa arrendadora o 'Propio'" value={equipmentForm.supplierName} onChange={e => setEquipmentForm(f => ({ ...f, supplierName: e.target.value }))} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Fecha de Inicio</Label>
-                <Input type="date" className="h-12 bg-slate-950/50 border-white/5 rounded-xl font-mono text-sm font-bold text-center" value={equipmentForm.startDate} onChange={e => setEquipmentForm(f => ({ ...f, startDate: e.target.value }))} />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Fee Diario (S/)</Label>
-                <Input type="number" step="0.01" className="h-12 bg-slate-950 border-white/10 rounded-xl font-mono text-lg font-black text-center focus:ring-slate-500/20" value={equipmentForm.dailyRate} onChange={e => setEquipmentForm(f => ({ ...f, dailyRate: e.target.value }))} />
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="p-8 bg-slate-950/50 border-t border-white/5 flex gap-3">
-            <Button variant="ghost" className="h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-[10px] text-slate-500 hover:bg-white/5" onClick={() => setEquipmentDialog(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={addEquipment} className="h-14 flex-1 rounded-2xl bg-white text-slate-950 font-black uppercase tracking-widest text-[10px] shadow-2xl hover:bg-slate-200">
-              Vincular Activo
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Project Dialog Modernized */}
-      <Dialog open={editProjectDialog} onOpenChange={setEditProjectDialog}>
-        <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border border-white/10 shadow-2xl bg-white dark:bg-slate-950">
-          <div className="bg-slate-950/50 border-b border-white/5 px-8 py-8">
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-black flex items-center gap-4 text-slate-900 dark:text-white uppercase tracking-tighter">
-                <div className="p-3 bg-primary/10 rounded-2xl border border-primary/20">
-                  <Pencil className="h-6 w-6 text-primary" />
-                </div>
-                Gestión de Ficha
-              </DialogTitle>
-            </DialogHeader>
-          </div>
-          
-          <div className="p-8 space-y-6">
-            <div className="space-y-3">
-              <Label htmlFor="proj-name" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Denominación del Proyecto</Label>
-              <Input id="proj-name" className="h-14 bg-slate-950 border-white/10 rounded-xl text-base font-bold uppercase tracking-tight" value={projectForm.name} onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div className="space-y-3">
-              <Label htmlFor="proj-desc" className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Memoria Descriptiva / Alcance</Label>
-              <textarea 
-                id="proj-desc" 
-                className="w-full bg-slate-950/50 border border-white/10 rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-primary/20 min-h-[160px] resize-none leading-relaxed text-slate-300" 
-                value={projectForm.description} 
-                onChange={e => setProjectForm(f => ({ ...f, description: e.target.value }))} 
-                placeholder="Detalle los objetivos técnicos y límites del proyecto..."
+      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
+        <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader><DialogTitle>Nueva partida</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <Field label="Actividad / partida">
+              <Input value={activityForm.name} onChange={(event) => setActivityForm((current) => ({ ...current, name: event.target.value }))} placeholder="Demolicion de losetas" />
+            </Field>
+            <Field label="Descripcion">
+              <Textarea value={activityForm.description} onChange={(event) => setActivityForm((current) => ({ ...current, description: event.target.value }))} placeholder="Alcance tecnico de la partida" />
+            </Field>
+            <Field label="Primer registro en obra (opcional)">
+              <Textarea
+                value={activityForm.initialLogText}
+                onChange={(event) => setActivityForm((current) => ({ ...current, initialLogText: event.target.value }))}
+                placeholder="Describe el trabajo del día; si solo subes fotos, se guardará un texto breve automático."
+                rows={3}
               />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Avance inicial (%)">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={activityForm.initialProgressDelta}
+                  onChange={(event) => setActivityForm((current) => ({ ...current, initialProgressDelta: event.target.value }))}
+                  placeholder="0"
+                />
+              </Field>
             </div>
+            <Field label={`Fotos del primer registro (máx. ${effectiveMaxPhotos(companySettings)})`}>
+              <input
+                ref={activityPhotosInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="sr-only"
+                onChange={async (event) => {
+                  const maxAllowed = effectiveMaxPhotos(companySettings);
+                  const picked = event.target.files ? Array.from(event.target.files) : [];
+                  const files = picked.slice(0, maxAllowed);
+                  if (picked.length > maxAllowed) {
+                    addToast(`Solo se permiten hasta ${maxAllowed} fotos por avance.`, 'info');
+                  }
+                  const photos = await filesToDataUrls(files);
+                  setActivityForm((current) => ({ ...current, photos }));
+                }}
+              />
+              <Button type="button" variant="outline" className="w-full min-h-24 flex-col gap-2 border-dashed" onClick={() => activityPhotosInputRef.current?.click()}>
+                <Camera className="h-5 w-5" />
+                Elegir fotografías
+              </Button>
+            </Field>
+            {activityForm.photos.length > 0 && (
+              <div className="grid grid-cols-4 gap-2">
+                {activityForm.photos.map((photo, index) => (
+                  <img key={index} src={photo} alt="" className="h-20 w-full rounded-md object-cover" />
+                ))}
+              </div>
+            )}
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActivityOpen(false)}>Cancelar</Button>
+            <Button onClick={addActivity} disabled={saving}>Crear partida</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          <DialogFooter className="p-8 bg-slate-950/50 border-t border-white/5 flex gap-3">
-            <Button variant="ghost" className="h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-[10px] text-slate-500" onClick={() => setEditProjectDialog(false)}>
-              Descartar
+      <Dialog open={!!selectedActivity} onOpenChange={(open) => !open && setSelectedActivity(null)}>
+        <DialogContent className="max-w-2xl" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Registro diario: {selectedActivity?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Fecha">
+                <Input type="date" value={logForm.logDate} onChange={(event) => setLogForm((current) => ({ ...current, logDate: event.target.value }))} />
+              </Field>
+              <Field label="Avance del dia (%)">
+                <Input type="number" min="0" max="100" value={logForm.progressDelta} onChange={(event) => setLogForm((current) => ({ ...current, progressDelta: event.target.value }))} />
+              </Field>
+            </div>
+            <Field label="Texto rapido del supervisor">
+              <Textarea value={logForm.rawText} onChange={(event) => setLogForm((current) => ({ ...current, rawText: event.target.value }))} placeholder="Se avanzo con tuberias empotradas en tramo principal..." />
+            </Field>
+            <Field label={`Fotos del día (máx. ${effectiveMaxPhotos(companySettings)})`}>
+              <input
+                ref={logPhotosInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="sr-only"
+                onChange={async (event) => {
+                  const maxAllowed = effectiveMaxPhotos(companySettings);
+                  const picked = event.target.files ? Array.from(event.target.files) : [];
+                  const files = picked.slice(0, maxAllowed);
+                  if (picked.length > maxAllowed) {
+                    addToast(`Solo se permiten hasta ${maxAllowed} fotos por avance.`, 'info');
+                  }
+                  const photos = await filesToDataUrls(files);
+                  setLogForm((current) => ({ ...current, photos }));
+                }}
+              />
+              <Button type="button" variant="outline" className="w-full min-h-24 flex-col gap-2 border-dashed" onClick={() => logPhotosInputRef.current?.click()}>
+                <Camera className="h-5 w-5" />
+                Elegir fotografías
+              </Button>
+            </Field>
+            {logForm.photos.length > 0 && (
+              <div className="grid grid-cols-4 gap-2">
+                {logForm.photos.map((photo, index) => <img key={index} src={photo} alt="" className="h-20 w-full rounded-md object-cover" />)}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedActivity(null)}>Cancelar</Button>
+            <Button onClick={addDailyLog} disabled={saving}>Guardar avance</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {pendingDelete?.type === 'material' ? 'Eliminar solicitud de material' : 'Eliminar partida'}
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-3 pt-1 text-left text-sm text-slate-600">
+                {pendingDelete?.type === 'material' ? (
+                  <>
+                    <p>¿Seguro que deseas eliminar esta solicitud? Esta acción no se puede deshacer.</p>
+                    <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-900">
+                      {pendingDelete.record.description || 'Sin descripción'}
+                    </p>
+                  </>
+                ) : pendingDelete?.type === 'activity' ? (
+                  <p>
+                    Se eliminará la partida{' '}
+                    <span className="font-black text-slate-900">{pendingDelete.record.name}</span> y todos los registros
+                    diarios asociados. Esta acción no se puede deshacer.
+                  </p>
+                ) : null}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPendingDelete(null)} disabled={saving}>
+              Cancelar
             </Button>
-            <Button onClick={saveProject} className="h-14 flex-1 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-primary/30">
-              Sincronizar Cambios
+            <Button type="button" variant="destructive" onClick={() => void executePendingDelete()} disabled={saving}>
+              Eliminar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function MetricCard({ label, value, hint, icon: Icon }: { label: string; value: string | number; hint: string; icon: any }) {
+  return (
+    <Card className="rounded-lg border-slate-200 shadow-sm">
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+          <p className="text-2xl font-black text-slate-900">{value}</p>
+          <p className="text-xs font-semibold text-slate-500">{hint}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm font-medium text-slate-500">{text}</div>;
+}
+
+function UrgencyBadge({ item }: { item: any }) {
+  if (item.urgency === 'RED') return <Badge variant="destructive" className="mr-2 rounded-md">Vencido</Badge>;
+  if (item.urgency === 'YELLOW') return <Badge variant="warning" className="mr-2 rounded-md">Urgente</Badge>;
+  return <Badge variant="success" className="mr-2 rounded-md">OK</Badge>;
+}
+
+function typeLabel(value: string) {
+  return MATERIAL_TYPES.find((type) => type.value === value)?.label || value;
+}
+
+function currency(value: number) {
+  return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(value || 0));
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('es-PE');
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function effectiveMaxPhotos(settings: { maxPhotosPerProgress?: number } | null | undefined) {
+  const n = Number(settings?.maxPhotosPerProgress);
+  if (!Number.isFinite(n) || n <= 0) return 3;
+  return Math.min(20, Math.max(1, Math.floor(n)));
+}
+
+async function filesToDataUrls(files: FileList | File[] | null | undefined) {
+  if (!files) return [];
+  const list = Array.isArray(files) ? files : Array.from(files);
+  return Promise.all(list.slice(0, 12).map(fileToDataUrl));
+}
+
+function renderProgressReport(report: any) {
+  const project = report.project || {};
+  const rows = (report.point2ProgressSummary || [])
+    .map((item: any) => `<tr><td>${escapeHtml(item.name)}</td><td>${Math.round(item.progressPercent || 0)}%</td><td>${escapeHtml(item.status || '')}</td></tr>`)
+    .join('');
+  const activities = (report.activities || [])
+    .map((activity: any) => {
+      const logs = (activity.logs || [])
+        .map((log: any) => {
+          const photos = (log.photos || []).map((photo: string) => `<img src="${photo}" />`).join('');
+          return `<article><h4>${formatDate(log.logDate)} · +${log.progressDelta || 0}%</h4><p>${escapeHtml(log.improvedText || log.rawText || '')}</p><div class="photos">${photos}</div></article>`;
+        })
+        .join('');
+      return `<section><h3>${escapeHtml(activity.name)} <span>${Math.round(activity.progressPercent || 0)}%</span></h3>${logs || '<p>Sin registros en el periodo.</p>'}</section>`;
+    })
+    .join('');
+
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Informe de avances - ${escapeHtml(project.projectCode || '')}</title>
+      <style>
+        body{font-family:Arial,sans-serif;margin:0;background:#f8fafc;color:#0f172a}
+        main{max-width:960px;margin:0 auto;background:white;min-height:100vh;padding:44px}
+        header{border-bottom:4px solid #0f172a;padding-bottom:24px;margin-bottom:28px}
+        h1{font-size:28px;margin:0 0 8px;font-weight:900}
+        h2{font-size:18px;margin:30px 0 12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px}
+        h3{display:flex;justify-content:space-between;font-size:16px;margin:22px 0 10px}
+        h4{margin:0 0 6px;font-size:13px;color:#334155}
+        p{line-height:1.55;color:#475569}
+        table{width:100%;border-collapse:collapse}
+        th,td{border:1px solid #e2e8f0;padding:10px;text-align:left;font-size:13px}
+        th{background:#f1f5f9;text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+        article{border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin:10px 0}
+        .photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+        img{width:100%;height:150px;object-fit:cover;border-radius:6px}
+        .meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;color:#64748b;font-size:13px}
+        @media print{body{background:white}main{padding:24px}.no-print{display:none}}
+      </style>
+    </head>
+    <body>
+      <main>
+        <button class="no-print" onclick="window.print()">Imprimir / guardar PDF</button>
+        <header>
+          <h1>Informe de Avances</h1>
+          <div class="meta">
+            <div><strong>Proyecto:</strong> ${escapeHtml(project.projectCode || '')} - ${escapeHtml(project.name || '')}</div>
+            <div><strong>Cliente:</strong> ${escapeHtml(project.company?.tradeName || project.company?.businessName || 'FYM Technologies')}</div>
+            <div><strong>Fecha de emision:</strong> ${formatDate(report.generatedAt)}</div>
+            <div><strong>Estado:</strong> ${escapeHtml(project.status || '')}</div>
+          </div>
+        </header>
+        <h2>1. Actividades desarrolladas</h2>
+        ${activities || '<p>No hay actividades registradas.</p>'}
+        <h2>2. Resumen de porcentajes de avance</h2>
+        <table><thead><tr><th>Partida</th><th>Avance acumulado</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>
+      </main>
+    </body>
+  </html>`;
+}
+
+function escapeHtml(value: string) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

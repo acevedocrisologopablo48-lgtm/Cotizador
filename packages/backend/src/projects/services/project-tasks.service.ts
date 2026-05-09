@@ -175,11 +175,12 @@ export class ProjectTasksService {
       .where('projectId', '==', projectId)
       .where('status', '==', status)
       .where('isActive', '==', true)
-      .orderBy('order', 'desc')
-      .limit(1)
       .get();
 
-    const maxOrder = orderSnap.empty ? 0 : (orderSnap.docs[0].data().order ?? 0);
+    const maxOrder = orderSnap.docs.reduce((max, doc) => {
+      const order = Number(doc.data().order ?? 0);
+      return Number.isFinite(order) && order > max ? order : max;
+    }, 0);
 
     const id = this.firebase.generateId();
     const now = new Date();

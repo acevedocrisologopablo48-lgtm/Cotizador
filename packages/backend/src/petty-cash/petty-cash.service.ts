@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { FirebaseService } from '../common/firebase/firebase.service';
 
 const ALLOWED_TX_TYPES = new Set(['EXPENSE', 'INCOME', 'REFUND', 'ADJUSTMENT']);
@@ -15,6 +15,7 @@ function toFiniteNumber(value: unknown, fallback?: number): number {
 
 @Injectable()
 export class PettyCashService {
+  private readonly logger = new Logger(PettyCashService.name);
   constructor(private firebase: FirebaseService) {}
 
   private get col() {
@@ -81,14 +82,22 @@ export class PettyCashService {
     const tSnap = await this.col.doc(id).collection('transactions').orderBy('transactionDate', 'desc').limit(50).get();
     fund.transactions = this.firebase.docsToArray(tSnap.docs);
 
+    const userRefs: FirebaseFirestore.DocumentReference[] = [];
     for (const t of fund.transactions) {
-      if (t.registeredBy) {
-        const u = await this.firebase.db.collection('users').doc(t.registeredBy).get();
-        if (u.exists) t.registeredByUser = { id: u.id, fullName: u.data()?.fullName };
+      if (t.registeredBy) userRefs.push(this.firebase.db.collection('users').doc(t.registeredBy));
+      if (t.approvedBy) userRefs.push(this.firebase.db.collection('users').doc(t.approvedBy));
+    }
+
+    const uniqueUserRefs = Array.from(new Set(userRefs.map(r => r.path))).map(p => this.firebase.db.doc(p));
+    const userDocs = uniqueUserRefs.length ? await this.firebase.db.getAll(...uniqueUserRefs) : [];
+    const userMap = new Map(userDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]));
+
+    for (const t of fund.transactions) {
+      if (t.registeredBy && userMap.has(t.registeredBy)) {
+        t.registeredByUser = { id: t.registeredBy, fullName: userMap.get(t.registeredBy).fullName };
       }
-      if (t.approvedBy) {
-        const u = await this.firebase.db.collection('users').doc(t.approvedBy).get();
-        if (u.exists) t.approvedByUser = { id: u.id, fullName: u.data()?.fullName };
+      if (t.approvedBy && userMap.has(t.approvedBy)) {
+        t.approvedByUser = { id: t.approvedBy, fullName: userMap.get(t.approvedBy).fullName };
       }
     }
 
@@ -265,14 +274,20 @@ export class PettyCashService {
     const { docs, total } = await this.firebase.paginatedQuery(query, page, pageSize);
     const data = this.firebase.docsToArray(docs);
 
+    // Batch user lookups to avoid N+1 queries
+    const userIds = Array.from(new Set(
+      data.flatMap((t: any) => [t.registeredBy, t.approvedBy].filter(Boolean)),
+    ));
+    const userRefs = userIds.map(id => this.firebase.db.collection('users').doc(id));
+    const userDocs = userRefs.length ? await this.firebase.db.getAll(...userRefs) : [];
+    const userMap = new Map(userDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]));
+
     for (const t of data) {
-      if (t.registeredBy) {
-        const u = await this.firebase.db.collection('users').doc(t.registeredBy).get();
-        if (u.exists) t.registeredByUser = { id: u.id, fullName: u.data()?.fullName };
+      if (t.registeredBy && userMap.has(t.registeredBy)) {
+        t.registeredByUser = { id: t.registeredBy, fullName: userMap.get(t.registeredBy)!.fullName };
       }
-      if (t.approvedBy) {
-        const u = await this.firebase.db.collection('users').doc(t.approvedBy).get();
-        if (u.exists) t.approvedByUser = { id: u.id, fullName: u.data()?.fullName };
+      if (t.approvedBy && userMap.has(t.approvedBy)) {
+        t.approvedByUser = { id: t.approvedBy, fullName: userMap.get(t.approvedBy)!.fullName };
       }
     }
 

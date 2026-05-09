@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 
 @Injectable()
 export class QuotationCalculatorService {
+  private readonly logger = new Logger(QuotationCalculatorService.name);
   constructor(private firebase: FirebaseService) {}
 
   async recalculateQuotation(quotationId: string) {
@@ -46,7 +47,7 @@ export class QuotationCalculatorService {
     // If a manual override is set, use it as the final total.
     // The computed breakdown (subtotal, igv) is still stored for reference.
     const manualOverride = quotation.manualTotalOverride;
-    const total = (manualOverride !== undefined && manualOverride !== null && Number(manualOverride) >= 0)
+    const total = (manualOverride !== undefined && manualOverride !== null && Number(manualOverride) > 0)
       ? Number(manualOverride)
       : computedTotal;
 

@@ -10,6 +10,7 @@ interface UserProfile {
   email: string;
   fullName: string;
   role: string;
+  allowedProjectIds?: string[];
 }
 
 interface AuthContextType {

@@ -27,6 +27,7 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   FIELD_SUPERVISOR: { label: 'Supervisor', color: 'bg-amber-100 text-amber-700 border-amber-200' },
   ACCOUNTANT: { label: 'Contador', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   VIEWER: { label: 'Lector', color: 'bg-slate-100 text-slate-600 border-slate-200' },
+  CLIENT: { label: 'Cliente VIP', color: 'bg-violet-100 text-violet-700 border-violet-200' },
 };
 
 const ROLES_LIST = Object.entries(UserRole).map(([, value]) => ({
@@ -42,6 +43,8 @@ interface User {
   role: string;
   isActive: boolean;
   createdAt: string;
+  allowedProjectIds?: string[];
+  allowedProjects?: Array<{ id: string; projectCode: string; name: string }>;
 }
 
 const emptyForm = {
@@ -50,6 +53,7 @@ const emptyForm = {
   fullName: '',
   phone: '',
   role: UserRole.VIEWER as string,
+  allowedProjectIds: [] as string[],
 };
 
 export default function UsersPage() {
@@ -58,6 +62,7 @@ export default function UsersPage() {
   const router = useRouter();
 
   const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; projectCode: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -69,6 +74,7 @@ export default function UsersPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editRole, setEditRole] = useState('');
+  const [editAllowedProjectIds, setEditAllowedProjectIds] = useState<string[]>([]);
 
   const [deleteUserOpen, setDeleteUserOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -87,8 +93,16 @@ export default function UsersPage() {
     if (!token || !isAdmin) return;
     try {
       setLoading(true);
-      const res = await api.get<any>('/auth/users', token);
-      setUsers(res.data || []);
+      const [usersRes, projectsRes] = await Promise.all([
+        api.get<any>('/auth/users', token),
+        api.get<any>('/projects?page=1&pageSize=100', token),
+      ]);
+      setUsers(usersRes.data || []);
+      setProjects((projectsRes.data || []).map((project: any) => ({
+        id: project.id,
+        projectCode: project.projectCode,
+        name: project.name,
+      })));
     } catch (e: any) {
       addToast(e.message || 'Error al cargar usuarios', 'error');
     } finally {
@@ -120,6 +134,7 @@ export default function UsersPage() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Email inválido';
     if (!form.password || form.password.length < 8) errs.password = 'Mínimo 8 caracteres';
     if (!form.role) errs.role = 'Selecciona un rol';
+    if (form.role === 'CLIENT' && form.allowedProjectIds.length === 0) errs.allowedProjectIds = 'Asigna al menos un proyecto';
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -134,6 +149,7 @@ export default function UsersPage() {
         fullName: form.fullName.trim(),
         phone: form.phone.trim() || undefined,
         role: form.role,
+        allowedProjectIds: form.role === 'CLIENT' ? form.allowedProjectIds : [],
       }, token!);
       addToast('Usuario creado correctamente', 'success');
       setCreateOpen(false);
@@ -150,6 +166,7 @@ export default function UsersPage() {
   const openEdit = (u: User) => {
     setEditingUser(u);
     setEditRole(u.role);
+    setEditAllowedProjectIds(u.allowedProjectIds || []);
     setEditOpen(true);
   };
 
@@ -158,6 +175,9 @@ export default function UsersPage() {
     setSaving(true);
     try {
       await api.put(`/auth/users/${editingUser.id}/role`, { role: editRole }, token!);
+      if (editRole === 'CLIENT') {
+        await api.put(`/auth/users/${editingUser.id}/client-access`, { allowedProjectIds: editAllowedProjectIds }, token!);
+      }
       addToast('Rol actualizado', 'success');
       setEditOpen(false);
       load();
@@ -213,10 +233,30 @@ export default function UsersPage() {
           </div>
         </div>
         {isAdmin && (
+          <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setForm({
+                email: 'cliente.vip.prueba@fymtech.local',
+                password: 'Cliente123!',
+                fullName: 'Cliente VIP de Prueba',
+                phone: '',
+                role: 'CLIENT',
+                allowedProjectIds: projects[0]?.id ? [projects[0].id] : [],
+              });
+              setFormErrors({});
+              setCreateOpen(true);
+            }}
+            className="h-10 px-5 rounded-xl font-semibold"
+          >
+            Usuario de prueba
+          </Button>
           <Button onClick={() => { setForm(emptyForm); setFormErrors({}); setCreateOpen(true); }} className="h-10 px-5 rounded-xl font-semibold">
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Usuario
           </Button>
+          </div>
         )}
       </div>
 
@@ -226,7 +266,7 @@ export default function UsersPage() {
           { label: 'Total Usuarios', value: users.length, color: 'text-primary', bg: 'bg-primary/10' },
           { label: 'Activos', value: users.filter(u => u.isActive).length, color: 'text-emerald-700', bg: 'bg-emerald-50' },
           { label: 'Inactivos', value: users.filter(u => !u.isActive).length, color: 'text-slate-500', bg: 'bg-slate-100' },
-          { label: 'Admins', value: users.filter(u => u.role === 'ADMIN').length, color: 'text-red-700', bg: 'bg-red-50' },
+          { label: 'Clientes VIP', value: users.filter(u => u.role === 'CLIENT').length, color: 'text-violet-700', bg: 'bg-violet-50' },
         ].map(s => (
           <Card key={s.label} className="border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
             <CardContent className="p-5 flex items-center gap-3">
@@ -308,6 +348,11 @@ export default function UsersPage() {
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Phone className="h-3 w-3" />
                             <span>{u.phone}</span>
+                          </div>
+                        )}
+                        {u.role === 'CLIENT' && (
+                          <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-violet-600">
+                            {(u.allowedProjects || []).map(p => p.projectCode).join(', ') || 'Sin proyecto asignado'}
                           </div>
                         )}
                       </div>
@@ -433,6 +478,14 @@ export default function UsersPage() {
               </Select>
               {formErrors.role && <p className="text-xs text-red-500">{formErrors.role}</p>}
             </div>
+            {form.role === 'CLIENT' && (
+              <ProjectAccessSelector
+                projects={projects}
+                selectedIds={form.allowedProjectIds}
+                onChange={(allowedProjectIds) => setForm(f => ({ ...f, allowedProjectIds }))}
+                error={formErrors.allowedProjectIds}
+              />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-xl">Cancelar</Button>
@@ -470,6 +523,13 @@ export default function UsersPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {editRole === 'CLIENT' && (
+                <ProjectAccessSelector
+                  projects={projects}
+                  selectedIds={editAllowedProjectIds}
+                  onChange={setEditAllowedProjectIds}
+                />
+              )}
             </div>
           )}
           <DialogFooter>
@@ -510,6 +570,58 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function ProjectAccessSelector({
+  projects,
+  selectedIds,
+  onChange,
+  error,
+}: {
+  projects: Array<{ id: string; projectCode: string; name: string }>;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  error?: string;
+}) {
+  const toggle = (projectId: string) => {
+    if (selectedIds.includes(projectId)) {
+      onChange(selectedIds.filter((id) => id !== projectId));
+      return;
+    }
+    onChange([...selectedIds, projectId]);
+  };
+
+  return (
+    <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3">
+      <Label className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+        Proyectos visibles para cliente
+      </Label>
+      {projects.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No hay proyectos disponibles para asignar.</p>
+      ) : (
+        <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+          {projects.map((project) => (
+            <label key={project.id} className="flex cursor-pointer items-start gap-2 rounded-lg bg-white p-2 text-xs shadow-sm">
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(project.id)}
+                onChange={() => toggle(project.id)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-black text-slate-800">{project.projectCode}</span>
+                <span className="ml-2 font-semibold text-slate-600">{project.name}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <p className="text-[11px] leading-5 text-violet-700">
+        El cliente solo podra ver avances e informes de los proyectos seleccionados.
+      </p>
     </div>
   );
 }

@@ -65,9 +65,14 @@ export class AppConfigService {
       defaultCurrency: 'PEN',
       defaultValidityDays: 15,
       defaultIgvPercentage: 18,
-      signatureUrl: '' 
+      signatureUrl: '',
+      maxPhotosPerProgress: 3
     };
-    return doc.data() || {};
+    const data = doc.data() || {};
+    if (data.maxPhotosPerProgress === undefined) {
+      data.maxPhotosPerProgress = 3;
+    }
+    return data;
   }
 
   async updateCompanySettings(data: any): Promise<any> {
@@ -88,6 +93,7 @@ export class AppConfigService {
       defaultValidityDays: toNumberWithDefault(data.defaultValidityDays, 15, 0, 365),
       defaultIgvPercentage: toNumberWithDefault(data.defaultIgvPercentage, 18, 0, 100),
       signatureUrl: data.signatureUrl ?? '',
+      maxPhotosPerProgress: toNumberWithDefault(data.maxPhotosPerProgress, 3, 0, 20),
       updatedAt: new Date(),
     };
     await this.companyDoc.set(sanitized, { merge: true });

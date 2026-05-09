@@ -47,17 +47,25 @@ export class QuotationsService {
     const page = Math.max(1, Number(rawPage) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(rawPageSize) || 20));
 
-    let query: FirebaseFirestore.Query = this.col;
+    let query: FirebaseFirestore.Query = this.col.where('deletedAt', '==', null);
     if (status) query = query.where('status', '==', status);
     if (companyId) query = query.where('companyId', '==', companyId);
 
     query = query.orderBy('createdAt', 'desc');
 
-    const { docs, total } = await this.firebase.paginatedQuery(query, page, pageSize);
-    let data = this.firebase.docsToArray(docs);
+    const requiresInMemoryFiltering =
+      Boolean(search?.trim()) || Boolean(tipo) || Boolean(dateFrom) || Boolean(dateTo) || Boolean(contactId);
 
-    // Exclude soft-deleted records
-    data = data.filter((item: any) => !item.deletedAt);
+    let data: any[] = [];
+    let total = 0;
+    if (requiresInMemoryFiltering) {
+      const snap = await query.get();
+      data = this.firebase.docsToArray(snap.docs);
+    } else {
+      const { docs, total: queryTotal } = await this.firebase.paginatedQuery(query, page, pageSize, query);
+      data = this.firebase.docsToArray(docs);
+      total = queryTotal;
+    }
 
     // Batch reads de relaciones (company / contact / creator) para evitar N+1.
     const companyIds = Array.from(new Set(data.map((q: any) => q.companyId).filter(Boolean)));
@@ -115,6 +123,11 @@ export class QuotationsService {
       });
     }
 
+    if (requiresInMemoryFiltering) {
+      total = data.length;
+      data = this.firebase.paginateArray(data, page, pageSize);
+    }
+
     return { data, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
   }
 
@@ -149,18 +162,46 @@ export class QuotationsService {
     const sectionsSnap = await this.col.doc(id).collection('sections').orderBy('sortOrder', 'asc').get();
     quotation.sections = this.firebase.docsToArray(sectionsSnap.docs);
 
+    const supplyRefs: FirebaseFirestore.DocumentReference[] = [];
+    const perfRateRefs: FirebaseFirestore.DocumentReference[] = [];
+
+    // Collect all items and refs
     for (const section of quotation.sections) {
       const itemsSnap = await this.col.doc(id).collection('sections').doc(section.id).collection('items').orderBy('sortOrder', 'asc').get();
       section.items = this.firebase.docsToArray(itemsSnap.docs);
 
       for (const item of section.items) {
         if (item.supplyId) {
-          const s = await this.firebase.db.collection('supplies').doc(item.supplyId).get();
-          if (s.exists) item.supply = { id: s.id, code: s.data()?.code, name: s.data()?.name };
+          supplyRefs.push(this.firebase.db.collection('supplies').doc(item.supplyId));
         }
         if (item.performanceRateId) {
-          const p = await this.firebase.db.collection('performanceRates').doc(item.performanceRateId).get();
-          if (p.exists) item.performanceRate = { id: p.id, code: p.data()?.code, name: p.data()?.name };
+          perfRateRefs.push(this.firebase.db.collection('performanceRates').doc(item.performanceRateId));
+        }
+      }
+    }
+
+    // Deduplicate and fetch in parallel
+    const uniqueSupplyRefs = Array.from(new Set(supplyRefs.map(r => r.path))).map(p => this.firebase.db.doc(p));
+    const uniquePerfRateRefs = Array.from(new Set(perfRateRefs.map(r => r.path))).map(p => this.firebase.db.doc(p));
+
+    const [supplyDocs, perfRateDocs] = await Promise.all([
+      uniqueSupplyRefs.length ? this.firebase.db.getAll(...uniqueSupplyRefs) : Promise.resolve([]),
+      uniquePerfRateRefs.length ? this.firebase.db.getAll(...uniquePerfRateRefs) : Promise.resolve([]),
+    ]);
+
+    const supplyMap = new Map(supplyDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]));
+    const perfRateMap = new Map(perfRateDocs.filter(d => d.exists).map(d => [d.id, d.data() as any]));
+
+    // Populate items
+    for (const section of quotation.sections) {
+      for (const item of section.items) {
+        if (item.supplyId && supplyMap.has(item.supplyId)) {
+          const s = supplyMap.get(item.supplyId);
+          item.supply = { id: item.supplyId, code: s.code, name: s.name };
+        }
+        if (item.performanceRateId && perfRateMap.has(item.performanceRateId)) {
+          const p = perfRateMap.get(item.performanceRateId);
+          item.performanceRate = { id: item.performanceRateId, code: p.code, name: p.name };
         }
       }
     }
@@ -416,28 +457,16 @@ export class QuotationsService {
     if (!doc.exists) throw new NotFoundException('Cotización no encontrada');
     const quotation = doc.data()!;
 
-    const validStatuses = [
-      ...(Object.values(QuotationStatus) as string[]),
-      'FOLLOW_UP',
-      'STAND_BY',
-    ];
+    const validStatuses = Object.values(QuotationStatus) as string[];
     if (!validStatuses.includes(newStatus)) {
       throw new BadRequestException(`Estado inválido: ${newStatus}`);
     }
 
     const currentStatus = (quotation.status || QuotationStatus.DRAFT) as string;
-    const extraTransitions: Record<string, string[]> = {
-      SENT: ['FOLLOW_UP', 'STAND_BY'],
-      FOLLOW_UP: ['APPROVED', 'REJECTED', 'STAND_BY', 'SENT'],
-      STAND_BY: ['FOLLOW_UP', 'SENT', 'REJECTED'],
-      REJECTED: ['FOLLOW_UP'],
-      EXPIRED: ['FOLLOW_UP'],
-    };
-    const allowed = [
-      ...(QUOTATION_STATUS_TRANSITIONS[currentStatus as QuotationStatus] || []),
-      ...(extraTransitions[currentStatus] || []),
-    ];
-    if (currentStatus !== newStatus && !allowed.includes(newStatus)) {
+    const allowed = new Set<string>(
+      QUOTATION_STATUS_TRANSITIONS[currentStatus as QuotationStatus] || [],
+    );
+    if (currentStatus !== newStatus && !allowed.has(newStatus)) {
       throw new BadRequestException(
         `Transición no permitida: ${currentStatus} → ${newStatus}`,
       );
@@ -539,6 +568,7 @@ export class QuotationsService {
       version: (original.version || 1) + 1,
       status: 'DRAFT',
       createdBy: userId,
+      deletedAt: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -589,4 +619,6 @@ export class QuotationsService {
     });
     return `COT-${yy}${month}-${String(res).padStart(3, '0')}`;
   }
+
+
 }

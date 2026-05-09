@@ -29,10 +29,13 @@ export class ProjectMilestonesService {
     const snap = await this.col
       .where('isActive', '==', true)
       .where('projectId', '==', projectId)
-      .orderBy('targetDate', 'asc')
       .get();
 
-    const milestones = this.firebase.docsToArray(snap.docs);
+    const milestones = this.firebase.docsToArray(snap.docs).sort((a: any, b: any) => {
+      const aTime = a.targetDate ? new Date(a.targetDate).getTime() : 0;
+      const bTime = b.targetDate ? new Date(b.targetDate).getTime() : 0;
+      return aTime - bTime;
+    });
 
     // Check for overdue milestones and update status if needed
     const now = new Date();

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuard
 import { FirebaseAuthGuard, RolesGuard } from '../../common/guards';
 import { Roles, CurrentUser } from '../../common/decorators';
 import { ProjectTasksService } from '../services/project-tasks.service';
+import { CreateTaskDto, UpdateTaskDto } from '../dto';
 
 @Controller('projects/:projectId/tasks')
 @UseGuards(FirebaseAuthGuard, RolesGuard)
@@ -42,7 +43,7 @@ export class ProjectTasksController {
   @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR')
   create(
     @Param('projectId') projectId: string,
-    @Body() dto: any,
+    @Body() dto: CreateTaskDto,
     @CurrentUser() user: any,
   ) {
     return this.tasksService.create(projectId, dto, { id: user.id, fullName: user.fullName });
@@ -61,7 +62,7 @@ export class ProjectTasksController {
   @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR')
   update(
     @Param('id') id: string,
-    @Body() dto: any,
+    @Body() dto: UpdateTaskDto,
     @CurrentUser() user: any,
   ) {
     return this.tasksService.update(id, dto, { id: user.id, fullName: user.fullName });

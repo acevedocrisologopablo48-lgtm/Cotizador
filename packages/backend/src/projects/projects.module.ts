@@ -6,6 +6,9 @@ import { ProjectEquipmentController } from './controllers/project-equipment.cont
 import { ProjectTasksController, ProjectTasksDirectController } from './controllers/project-tasks.controller';
 import { ProjectMilestonesController, ProjectMilestonesDirectController } from './controllers/project-milestones.controller';
 import { ProjectActivityController } from './controllers/project-activity.controller';
+import { ProjectMaterialsController } from './controllers/project-materials.controller';
+import { ProjectProgressController } from './controllers/project-progress.controller';
+import { ProjectQueriesController } from './controllers/project-queries.controller';
 import { ProjectsService } from './services/projects.service';
 import { ProjectExpensesService } from './services/project-expenses.service';
 import { ProjectWorkforceService } from './services/project-workforce.service';
@@ -13,6 +16,10 @@ import { ProjectEquipmentService } from './services/project-equipment.service';
 import { ProjectTasksService } from './services/project-tasks.service';
 import { ProjectMilestonesService } from './services/project-milestones.service';
 import { ProjectActivityService } from './services/project-activity.service';
+import { ProjectAiService } from './services/project-ai.service';
+import { ProjectMaterialsService } from './services/project-materials.service';
+import { ProjectProgressService } from './services/project-progress.service';
+import { ProjectQueriesService } from './services/project-queries.service';
 
 @Module({
   controllers: [
@@ -25,6 +32,9 @@ import { ProjectActivityService } from './services/project-activity.service';
     ProjectMilestonesController,
     ProjectMilestonesDirectController,
     ProjectActivityController,
+    ProjectMaterialsController,
+    ProjectProgressController,
+    ProjectQueriesController,
   ],
   providers: [
     ProjectsService,
@@ -34,6 +44,10 @@ import { ProjectActivityService } from './services/project-activity.service';
     ProjectTasksService,
     ProjectMilestonesService,
     ProjectActivityService,
+    ProjectAiService,
+    ProjectMaterialsService,
+    ProjectProgressService,
+    ProjectQueriesService,
   ],
   exports: [ProjectsService, ProjectTasksService, ProjectMilestonesService],
 })

@@ -23,6 +23,7 @@ export class AuthService {
     fullName: string;
     phone?: string;
     role: string;
+    allowedProjectIds?: string[];
   }) {
     // Check if user already exists in Firestore
     const existing = await this.firebase.db
@@ -58,6 +59,7 @@ export class AuthService {
       fullName: data.fullName,
       phone: data.phone || null,
       role: data.role,
+      allowedProjectIds: data.role === 'CLIENT' ? this.normalizeProjectIds(data.allowedProjectIds) : [],
       isActive: true,
       firebaseUid: firebaseUser.uid,
       lastLoginAt: null,
@@ -137,7 +139,9 @@ export class AuthService {
       .orderBy('fullName')
       .get();
 
-    return this.firebase.docsToArray(snap.docs).map(({ passwordHash, firebaseUid, ...u }: any) => u);
+    const users = this.firebase.docsToArray(snap.docs).map(({ passwordHash, firebaseUid, ...u }: any) => u);
+    await this.attachAllowedProjects(users);
+    return users;
   }
 
   async listAssignableUsers() {
@@ -164,7 +168,9 @@ export class AuthService {
 
     const user = doc.data() as any;
     const previousRole = user.role;
-    await this.firebase.db.collection('users').doc(userId).update({ role, updatedAt: new Date() });
+    const updateData: Record<string, any> = { role, updatedAt: new Date() };
+    if (role !== 'CLIENT') updateData.allowedProjectIds = [];
+    await this.firebase.db.collection('users').doc(userId).update(updateData);
 
     if (user.firebaseUid) {
       try {
@@ -185,6 +191,24 @@ export class AuthService {
     }
 
     return { id: userId, role };
+  }
+
+  async updateClientAccess(userId: string, allowedProjectIds: string[]) {
+    const doc = await this.firebase.db.collection('users').doc(userId).get();
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado');
+
+    const user = doc.data() as any;
+    if (user.role !== 'CLIENT') {
+      throw new ConflictException('Solo los usuarios con rol Cliente pueden tener proyectos asignados');
+    }
+
+    const normalized = this.normalizeProjectIds(allowedProjectIds);
+    await this.firebase.db.collection('users').doc(userId).update({
+      allowedProjectIds: normalized,
+      updatedAt: new Date(),
+    });
+
+    return { id: userId, allowedProjectIds: normalized };
   }
 
   async updateUserStatus(userId: string, isActive: boolean) {
@@ -250,5 +274,29 @@ export class AuthService {
     }
 
     return { id: userId };
+  }
+
+  private normalizeProjectIds(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(value.map(String).map((id) => id.trim()).filter(Boolean)));
+  }
+
+  private async attachAllowedProjects(users: any[]) {
+    const projectIds = Array.from(
+      new Set(users.flatMap((user) => (Array.isArray(user.allowedProjectIds) ? user.allowedProjectIds : []))),
+    );
+    if (projectIds.length === 0) return;
+
+    const refs = projectIds.map((id) => this.firebase.db.collection('projects').doc(id));
+    const docs = await this.firebase.db.getAll(...refs);
+    const projectMap = new Map(
+      docs.filter((doc) => doc.exists).map((doc) => [doc.id, { id: doc.id, projectCode: doc.data()?.projectCode, name: doc.data()?.name }]),
+    );
+
+    for (const user of users) {
+      user.allowedProjects = (Array.isArray(user.allowedProjectIds) ? user.allowedProjectIds : [])
+        .map((id: string) => projectMap.get(id))
+        .filter(Boolean);
+    }
   }
 }

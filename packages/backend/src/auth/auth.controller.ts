@@ -16,11 +16,13 @@ import { AuthService } from './auth.service';
 import { CurrentUser, Roles } from '../common/decorators';
 import { FirebaseAuthGuard, RolesGuard } from '../common/guards';
 import { UserRole } from '@fym/shared';
-import { IsEmail, IsString, IsNotEmpty, MinLength, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import { IsEmail, IsString, IsNotEmpty, MinLength, IsOptional, IsBoolean, IsIn, IsArray } from 'class-validator';
+
+const SYSTEM_ROLES = [...Object.values(UserRole), 'CLIENT'] as string[];
 
 class UpdateRoleDto {
-  @IsEnum(UserRole)
-  role: UserRole;
+  @IsIn(SYSTEM_ROLES)
+  role: string;
 }
 
 class UpdateStatusDto {
@@ -44,8 +46,13 @@ class CreateUserDto {
   @IsOptional()
   phone?: string;
 
-  @IsEnum(UserRole)
-  role: UserRole;
+  @IsIn(SYSTEM_ROLES)
+  role: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  allowedProjectIds?: string[];
 }
 
 @ApiTags('Auth')
@@ -97,6 +104,15 @@ export class AuthController {
   @ApiBearerAuth()
   async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
     const result = await this.authService.updateUserRole(id, dto.role);
+    return { data: result };
+  }
+
+  @Put('users/:id/client-access')
+  @UseGuards(FirebaseAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  async updateClientAccess(@Param('id') id: string, @Body('allowedProjectIds') allowedProjectIds: string[]) {
+    const result = await this.authService.updateClientAccess(id, allowedProjectIds);
     return { data: result };
   }
 
