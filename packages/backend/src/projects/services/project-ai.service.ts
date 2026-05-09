@@ -69,51 +69,49 @@ export class ProjectAiService {
       };
     }
 
-    if (!this.apiKey) {
-      return {
-        extraction: {
-          ...fallback,
-          notes: ['El servicio de IA no esta configurado en produccion. Complete los campos manualmente.'],
-        },
-        aiApplied: false,
-      };
+    if (this.apiKey) {
+      try {
+        const response = await this.createResponse({
+          model: this.model,
+          input: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'input_text',
+                  text:
+                    'Extrae datos de esta factura o boleta peruana. Devuelve solo JSON valido con estas claves: supplierName, supplierRuc, documentNumber, issueDate (YYYY-MM-DD o null), totalAmount (numero o null), currency, confidence (0 a 1), notes (array de strings). No inventes valores.',
+                },
+                { type: 'input_image', image_url: imageDataUrl },
+              ],
+            },
+          ],
+        });
+
+        const text = this.extractOutputText(response);
+        const parsed = this.parseJsonObject(text);
+        return {
+          extraction: {
+            supplierName: this.nullableString(parsed.supplierName),
+            supplierRuc: this.nullableString(parsed.supplierRuc),
+            documentNumber: this.nullableString(parsed.documentNumber),
+            issueDate: this.nullableString(parsed.issueDate),
+            totalAmount: this.nullableNumber(parsed.totalAmount),
+            currency: this.nullableString(parsed.currency) || 'PEN',
+            confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
+            notes: Array.isArray(parsed.notes) ? parsed.notes.map(String) : [],
+          },
+          aiApplied: true,
+        };
+      } catch (error) {
+        this.logger.warn(`No se pudo extraer factura con IA; se intentara OCR local: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     try {
-      const response = await this.createResponse({
-        model: this.model,
-        input: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_text',
-                text:
-                  'Extrae datos de esta factura o boleta peruana. Devuelve solo JSON valido con estas claves: supplierName, supplierRuc, documentNumber, issueDate (YYYY-MM-DD o null), totalAmount (numero o null), currency, confidence (0 a 1), notes (array de strings). No inventes valores.',
-              },
-              { type: 'input_image', image_url: imageDataUrl },
-            ],
-          },
-        ],
-      });
-
-      const text = this.extractOutputText(response);
-      const parsed = this.parseJsonObject(text);
-      return {
-        extraction: {
-          supplierName: this.nullableString(parsed.supplierName),
-          supplierRuc: this.nullableString(parsed.supplierRuc),
-          documentNumber: this.nullableString(parsed.documentNumber),
-          issueDate: this.nullableString(parsed.issueDate),
-          totalAmount: this.nullableNumber(parsed.totalAmount),
-          currency: this.nullableString(parsed.currency) || 'PEN',
-          confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
-          notes: Array.isArray(parsed.notes) ? parsed.notes.map(String) : [],
-        },
-        aiApplied: true,
-      };
+      return await this.extractInvoiceWithLocalOcr(imageDataUrl);
     } catch (error) {
-      this.logger.warn(`No se pudo extraer factura con IA: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(`No se pudo extraer factura con OCR local: ${error instanceof Error ? error.message : String(error)}`);
       return { extraction: fallback, aiApplied: false };
     }
   }
@@ -168,6 +166,143 @@ export class ProjectAiService {
   private nullableNumber(value: unknown): number | null {
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
+  }
+
+  private async extractInvoiceWithLocalOcr(imageDataUrl: string): Promise<{ extraction: InvoiceExtraction; aiApplied: boolean }> {
+    const { recognize } = await import('tesseract.js');
+    const image = this.dataUrlToBuffer(imageDataUrl);
+    const result = await recognize(image, 'eng');
+    const text = String(result?.data?.text || '');
+    const confidence = Math.max(0, Math.min(1, Number(result?.data?.confidence || 0) / 100));
+    const extraction = this.parseInvoiceText(text, confidence);
+    const hasUsefulData = Boolean(
+      extraction.supplierRuc ||
+      extraction.documentNumber ||
+      extraction.issueDate ||
+      extraction.totalAmount ||
+      extraction.supplierName,
+    );
+
+    return {
+      extraction: {
+        ...extraction,
+        notes: hasUsefulData
+          ? ['Lectura automatica aplicada con OCR local. Revise los campos antes de guardar.']
+          : ['No se detectaron datos claros en la imagen. Pruebe con una foto mas nitida o complete manualmente.'],
+      },
+      aiApplied: hasUsefulData,
+    };
+  }
+
+  private dataUrlToBuffer(imageDataUrl: string): Buffer {
+    const match = imageDataUrl.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    if (!match?.[1]) throw new Error('Formato de imagen invalido');
+    return Buffer.from(match[1], 'base64');
+  }
+
+  private parseInvoiceText(text: string, confidence: number): InvoiceExtraction {
+    const normalized = text
+      .replace(/\r/g, '\n')
+      .replace(/[|]+/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
+    const lines = normalized
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const compact = normalized.replace(/\s+/g, ' ');
+
+    const supplierRuc = compact.match(/\b(?:10|20)\d{9}\b/)?.[0] || null;
+    const documentNumber = this.extractDocumentNumber(compact);
+    const issueDate = this.extractIssueDate(compact);
+    const totalAmount = this.extractTotalAmount(lines, compact);
+    const supplierName = this.extractSupplierName(lines, supplierRuc);
+
+    return {
+      supplierName,
+      supplierRuc,
+      documentNumber,
+      issueDate,
+      totalAmount,
+      currency: /US\$|USD|DOLAR/i.test(compact) ? 'USD' : 'PEN',
+      confidence,
+      notes: [],
+    };
+  }
+
+  private extractDocumentNumber(text: string): string | null {
+    const patterns = [
+      /\b(?:F|B|E)\d{3}[-\s]?\d{1,10}\b/i,
+      /\b(?:FACTURA|BOLETA|RECIBO)[^\w]{0,12}([A-Z0-9]{1,4}[-\s]?\d{1,10})\b/i,
+      /\b(?:NRO|N°|NUMERO|NO\.?)[^\w]{0,8}([A-Z0-9]{1,4}[-\s]?\d{1,10})\b/i,
+    ];
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      const value = match?.[1] || match?.[0];
+      if (value) return value.replace(/\s+/g, '').toUpperCase();
+    }
+    return null;
+  }
+
+  private extractIssueDate(text: string): string | null {
+    const match = text.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](20\d{2})\b/);
+    if (!match) {
+      const iso = text.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+      if (!iso) return null;
+      return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+    }
+    return `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+  }
+
+  private extractTotalAmount(lines: string[], compact: string): number | null {
+    const amountPattern = /(?:S\/|PEN|TOTAL|IMPORTE|MONTO)?\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})|[0-9]+(?:[.,][0-9]{2}))/gi;
+    const totalLine = [...lines].reverse().find((line) => /\b(TOTAL|IMPORTE TOTAL|MONTO TOTAL|A PAGAR)\b/i.test(line));
+    const source = totalLine || compact;
+    const amounts = Array.from(source.matchAll(amountPattern))
+      .map((match) => this.parseMoney(match[1]))
+      .filter((value): value is number => value !== null && value > 0);
+    if (amounts.length > 0) return amounts[amounts.length - 1];
+
+    const allAmounts = Array.from(compact.matchAll(amountPattern))
+      .map((match) => this.parseMoney(match[1]))
+      .filter((value): value is number => value !== null && value > 0);
+    return allAmounts.length ? Math.max(...allAmounts) : null;
+  }
+
+  private parseMoney(value: string): number | null {
+    const cleaned = value.trim();
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    const decimalSeparator = lastComma > lastDot ? ',' : '.';
+    const normalized = cleaned
+      .replace(new RegExp(`\\${decimalSeparator === ',' ? '.' : ','}`, 'g'), '')
+      .replace(decimalSeparator, '.');
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  private extractSupplierName(lines: string[], supplierRuc: string | null): string | null {
+    if (supplierRuc) {
+      const rucIndex = lines.findIndex((line) => line.includes(supplierRuc));
+      for (let i = Math.max(0, rucIndex - 3); i < rucIndex; i++) {
+        const candidate = this.cleanSupplierCandidate(lines[i]);
+        if (candidate) return candidate;
+      }
+    }
+
+    for (const line of lines.slice(0, 8)) {
+      const candidate = this.cleanSupplierCandidate(line);
+      if (candidate) return candidate;
+    }
+    return null;
+  }
+
+  private cleanSupplierCandidate(line: string): string | null {
+    const value = line.replace(/[^A-ZÁÉÍÓÚÑ0-9 .,&-]/gi, '').replace(/\s+/g, ' ').trim();
+    if (value.length < 4) return null;
+    if (/\b(RUC|FACTURA|BOLETA|RECIBO|ELECTRONICA|TOTAL|FECHA|DIRECCION|TELEFONO)\b/i.test(value)) return null;
+    if (/^\d+([.,]\d+)?$/.test(value)) return null;
+    return value;
   }
 
   private localPolish(text: string): string {
