@@ -1,5 +1,5 @@
 FROM node:24-alpine AS base
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9.15.9
 
 # ── deps stage ──────────────────────────────────────────────
 FROM base AS deps
@@ -25,7 +25,7 @@ RUN pnpm --filter backend build
 
 # ── production stage ─────────────────────────────────────────
 FROM node:24-alpine AS production
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9.15.9
 WORKDIR /app
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
