@@ -59,7 +59,25 @@ export class ProjectAiService {
       notes: ['No se pudo aplicar OCR automaticamente. Revise y complete los campos manualmente.'],
     };
 
-    if (!this.apiKey || !imageDataUrl) return { extraction: fallback, aiApplied: false };
+    if (!imageDataUrl) {
+      return {
+        extraction: {
+          ...fallback,
+          notes: ['No se recibio una imagen valida para leer la factura.'],
+        },
+        aiApplied: false,
+      };
+    }
+
+    if (!this.apiKey) {
+      return {
+        extraction: {
+          ...fallback,
+          notes: ['El servicio de IA no esta configurado en produccion. Complete los campos manualmente.'],
+        },
+        aiApplied: false,
+      };
+    }
 
     try {
       const response = await this.createResponse({

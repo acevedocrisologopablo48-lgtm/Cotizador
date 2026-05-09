@@ -176,6 +176,7 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
       const imageDataUrl = await fileToDataUrl(file);
       const res = await api.post<any>(`/projects/${id}/expenses/extract-invoice`, { imageDataUrl }, token);
       const extraction = res.extraction || {};
+      const notes = Array.isArray(extraction.notes) ? extraction.notes.filter(Boolean).map(String) : [];
       setExpenseForm((current) => ({
         ...current,
         supplierName: extraction.supplierName || current.supplierName,
@@ -184,7 +185,12 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
         amount: extraction.totalAmount ? String(extraction.totalAmount) : current.amount,
         expenseDate: extraction.issueDate || current.expenseDate,
       }));
-      addToast(res.aiApplied ? 'Factura leida con IA. Revisa los campos antes de guardar.' : 'No se pudo leer automaticamente; completa manualmente.', res.aiApplied ? 'success' : 'info');
+      addToast(
+        res.aiApplied
+          ? 'Factura leida con IA. Revisa los campos antes de guardar.'
+          : notes[0] || 'No se pudo leer automaticamente; completa manualmente.',
+        res.aiApplied ? 'success' : 'info',
+      );
     } catch (error: any) {
       addToast(error.message, 'error');
     } finally {
@@ -633,7 +639,16 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
               <label className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 text-sm font-bold text-slate-600 hover:bg-slate-50">
                 <Upload className="mr-2 h-4 w-4" />
                 Leer con IA
-                <input type="file" accept="image/*" className="hidden" onChange={(event) => extractInvoice(event.target.files?.[0] || null)} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={saving}
+                  onChange={(event) => {
+                    void extractInvoice(event.target.files?.[0] || null);
+                    event.currentTarget.value = '';
+                  }}
+                />
               </label>
             </Field>
           </div>
