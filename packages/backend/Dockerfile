@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 RUN npm install -g pnpm
 
 # ── deps stage ──────────────────────────────────────────────
@@ -24,7 +24,7 @@ RUN pnpm --filter shared build || true
 RUN pnpm --filter backend build
 
 # ── production stage ─────────────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 RUN npm install -g pnpm
 WORKDIR /app
 
