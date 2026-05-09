@@ -98,9 +98,10 @@ const BASE_STYLES = `
   .cover-meta { font-size: 11pt; }
   .cover-images { display: flex; flex-direction: column; gap: 10px; }
   .cover-images img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; }
+  .brand-logo { display: block; max-width: 210px; width: auto; height: auto; object-fit: contain; }
   .foot { position: fixed; bottom: 0; left: 0; right: 0; background: #1e3a5f; color: #fff; padding: 8px 16mm; font-size: 8pt; display: flex; justify-content: space-between; }
   .sig { text-align: center; margin-top: 24px; page-break-inside: avoid; }
-  .sig img { max-height: 64px; }
+  .sig img { max-width: 240px; max-height: 72px; width: auto; height: auto; object-fit: contain; }
   @media print {
     .foot { position: fixed; }
   }
@@ -243,7 +244,7 @@ export function renderQuotationPrintHtml(quotation: any, company: QuotationPrint
         </div>
         <div class="cover-main">
           <div>
-            ${company.logoUrl ? `<img src="${escapeHtml(company.logoUrl)}" alt="Logo" style="max-height:56px;margin-bottom:12px" />` : ''}
+            ${company.logoUrl ? `<img src="${escapeHtml(company.logoUrl)}" alt="Logo" class="brand-logo" style="max-height:56px;margin-bottom:12px" />` : ''}
             <div class="cover-title">PROPUESTA TÉCNICO-ECONÓMICA</div>
             <div class="cover-meta"><strong>Cliente:</strong> ${escapeHtml(clientName)}<br/>
             <strong>Atención:</strong> ${escapeHtml(contactName)}<br/>
@@ -289,7 +290,7 @@ export function renderQuotationPrintHtml(quotation: any, company: QuotationPrint
           <h1 style="margin-top:8px;">PROPUESTA Nº ${escapeHtml(qNum)}${rev}</h1>
           <p class="muted" style="margin:4px 0 0">${escapeHtml(statusLabel(quotation.status))}</p>
         </div>
-        ${company.logoUrl ? `<img src="${escapeHtml(company.logoUrl)}" alt="Logo" style="max-height:64px" />` : ''}
+        ${company.logoUrl ? `<img src="${escapeHtml(company.logoUrl)}" alt="Logo" class="brand-logo" style="max-height:64px" />` : ''}
       </div>
       <div class="two-col">
         <div class="card">

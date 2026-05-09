@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { FirebaseService } from '../common/firebase/firebase.service';
 
 const DEFAULT_QUOTATION_TYPES = [
@@ -16,6 +16,19 @@ function toNumberWithDefault(value: unknown, defaultValue: number, min = 0, max 
   const n = Number(value);
   if (!Number.isFinite(n) || n < min || n > max) return defaultValue;
   return n;
+}
+
+function cleanImageReference(value: unknown, fieldLabel: string): string {
+  if (typeof value !== 'string') return '';
+  const cleaned = value.trim();
+  if (!cleaned) return '';
+  if (!/^(https?:\/\/|data:image\/)/i.test(cleaned)) {
+    throw new BadRequestException(`${fieldLabel} debe ser una URL HTTPS o una imagen embebida válida`);
+  }
+  if (cleaned.length > 450_000) {
+    throw new BadRequestException(`${fieldLabel} supera el tamaño máximo permitido`);
+  }
+  return cleaned;
 }
 
 @Injectable()
@@ -85,14 +98,14 @@ export class AppConfigService {
       website: data.website ?? '',
       bankDetails: data.bankDetails ?? '',
       notes: data.notes ?? '',
-      logoUrl: data.logoUrl ?? '',
+      logoUrl: cleanImageReference(data.logoUrl, 'Logo'),
       slogan: data.slogan ?? '',
       legalRepresentative: data.legalRepresentative ?? '',
       legalRepresentativeRole: data.legalRepresentativeRole ?? '',
       defaultCurrency: data.defaultCurrency ?? 'PEN',
       defaultValidityDays: toNumberWithDefault(data.defaultValidityDays, 15, 0, 365),
       defaultIgvPercentage: toNumberWithDefault(data.defaultIgvPercentage, 18, 0, 100),
-      signatureUrl: data.signatureUrl ?? '',
+      signatureUrl: cleanImageReference(data.signatureUrl, 'Firma'),
       maxPhotosPerProgress: toNumberWithDefault(data.maxPhotosPerProgress, 3, 0, 20),
       updatedAt: new Date(),
     };

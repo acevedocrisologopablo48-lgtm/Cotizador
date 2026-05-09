@@ -26,6 +26,13 @@ RUN pnpm --filter backend build
 # ── production stage ─────────────────────────────────────────
 FROM node:24-alpine AS production
 RUN npm install -g pnpm@9.15.9
+RUN apk add --no-cache \
+  ca-certificates \
+  chromium \
+  freetype \
+  harfbuzz \
+  nss \
+  ttf-freefont
 WORKDIR /app
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
@@ -42,6 +49,7 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 WORKDIR /app/packages/backend
 
 ENV NODE_ENV=production
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 EXPOSE 8080
 

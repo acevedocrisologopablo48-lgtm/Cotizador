@@ -3,8 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,6 +32,54 @@ interface CompanySettings {
   maxPhotosPerProgress: number;
 }
 
+const MAX_CONFIG_IMAGE_DATA_URL_LENGTH = 420_000;
+
+function readAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('No se pudo leer la imagen'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function compressConfigImage(file: File, maxWidth: number, maxHeight: number): Promise<string> {
+  if (file.size > 6 * 1024 * 1024) {
+    throw new Error('La imagen no debe superar 6 MB.');
+  }
+
+  if (file.type === 'image/svg+xml') {
+    const dataUrl = await readAsDataUrl(file);
+    if (dataUrl.length > MAX_CONFIG_IMAGE_DATA_URL_LENGTH) {
+      throw new Error('El SVG es demasiado pesado para guardarlo en configuración.');
+    }
+    return dataUrl;
+  }
+
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxWidth / bitmap.width, maxHeight / bitmap.height);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No se pudo preparar la imagen.');
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+
+  const qualities = [0.9, 0.82, 0.74, 0.66, 0.58];
+  for (const quality of qualities) {
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', quality));
+    if (!blob) continue;
+    const dataUrl = await readAsDataUrl(blob);
+    if (dataUrl.length <= MAX_CONFIG_IMAGE_DATA_URL_LENGTH) return dataUrl;
+  }
+
+  throw new Error('La imagen sigue siendo demasiado pesada. Usa una versión más liviana.');
+}
+
 export default function SettingsPage() {
   const { token } = useAuth();
   const { addToast } = useToast();
@@ -61,6 +107,10 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
+  const [imagePreviewErrors, setImagePreviewErrors] = useState({
+    logoUrl: false,
+    signatureUrl: false,
+  });
 
   // Quotation types
   const [quotationTypes, setQuotationTypes] = useState<string[]>([]);
@@ -104,6 +154,7 @@ export default function SettingsPage() {
     try {
       const data = await api.get<CompanySettings>('/config/company', token);
       setSettings(data);
+      setImagePreviewErrors({ logoUrl: false, signatureUrl: false });
     } catch (err: any) {
       addToast(err.message || 'Error al cargar configuraciones', 'error');
     } finally {
@@ -146,7 +197,7 @@ export default function SettingsPage() {
     field: 'logoUrl' | 'signatureUrl',
     setUploading: (v: boolean) => void,
     label: string,
-  ) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  ) => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -156,29 +207,31 @@ export default function SettingsPage() {
     }
 
     setUploading(true);
-    const storageRef = ref(storage, `company/${field}_${Date.now()}_${file.name}`);
-    const task = uploadBytesResumable(storageRef, file);
+    try {
+      const dataUrl = await compressConfigImage(
+        file,
+        field === 'logoUrl' ? 1200 : 1000,
+        field === 'logoUrl' ? 700 : 420,
+      );
+      const next = { ...settings, [field]: dataUrl };
+      setSettings(next);
+      setImagePreviewErrors(prev => ({ ...prev, [field]: false }));
 
-    task.on(
-      'state_changed',
-      () => {},
-      () => {
-        setUploading(false);
-        addToast(`Error al subir ${label}`, 'error');
-      },
-      async () => {
-        try {
-          const url = await getDownloadURL(task.snapshot.ref);
-          setSettings(prev => ({ ...prev, [field]: url }));
-          setUploading(false);
-          setSaved(false);
-          addToast(`${label} subido correctamente (recuerda guardar)`, 'success');
-        } catch {
-          setUploading(false);
-          addToast(`Error al obtener URL de ${label}`, 'error');
-        }
+      if (token) {
+        const savedSettings = await api.put<CompanySettings>('/config/company', next, token);
+        setSettings(savedSettings);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } else {
+        setSaved(false);
       }
-    );
+      addToast(`${label} guardado correctamente`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || `Error al procesar ${label}`, 'error');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   if (loading) {
@@ -275,15 +328,22 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="p-8 pt-0 space-y-6">
               <div className="relative aspect-video w-full overflow-hidden rounded-3xl border-2 border-dashed border-white/5 bg-slate-950/40 flex items-center justify-center group/img hover:border-primary/30 transition-colors duration-500">
-                {settings.logoUrl ? (
+                {settings.logoUrl && !imagePreviewErrors.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={settings.logoUrl} alt="Logo" className="h-full w-full object-contain p-10 transition-transform duration-700 group-hover/img:scale-105" />
+                  <img
+                    src={settings.logoUrl}
+                    alt="Logo"
+                    className="h-full w-full object-contain p-4 transition-transform duration-700 group-hover/img:scale-105"
+                    onError={() => setImagePreviewErrors(prev => ({ ...prev, logoUrl: true }))}
+                  />
                 ) : (
                   <div className="flex flex-col items-center gap-4">
                     <div className="h-16 w-16 rounded-full bg-slate-900 flex items-center justify-center border border-white/5">
                       <ImageIcon className="h-8 w-8 text-slate-700" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Pending Upload</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                      {settings.logoUrl ? 'Imagen no disponible' : 'Pending Upload'}
+                    </span>
                   </div>
                 )}
                 {uploadingLogo && (
@@ -328,15 +388,22 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="p-8 pt-0 space-y-6">
               <div className="relative aspect-video w-full overflow-hidden rounded-3xl border-2 border-dashed border-white/5 bg-slate-950/40 flex items-center justify-center group/img hover:border-indigo-500/30 transition-colors duration-500">
-                {settings.signatureUrl ? (
+                {settings.signatureUrl && !imagePreviewErrors.signatureUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={settings.signatureUrl} alt="Firma" className="h-full w-full object-contain p-10 transition-transform duration-700 group-hover/img:scale-105" />
+                  <img
+                    src={settings.signatureUrl}
+                    alt="Firma"
+                    className="h-full w-full object-contain p-4 transition-transform duration-700 group-hover/img:scale-105"
+                    onError={() => setImagePreviewErrors(prev => ({ ...prev, signatureUrl: true }))}
+                  />
                 ) : (
                   <div className="flex flex-col items-center gap-4">
                     <div className="h-16 w-16 rounded-full bg-slate-900 flex items-center justify-center border border-white/5">
                       <FileText className="h-8 w-8 text-slate-700" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Pending Upload</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                      {settings.signatureUrl ? 'Imagen no disponible' : 'Pending Upload'}
+                    </span>
                   </div>
                 )}
                 {uploadingSignature && (
