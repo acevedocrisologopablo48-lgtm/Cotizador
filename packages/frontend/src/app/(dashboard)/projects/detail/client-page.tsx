@@ -15,8 +15,12 @@ import {
   Printer,
   Trash2,
   Upload,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { storage } from '@/lib/firebase';
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
@@ -50,6 +54,13 @@ const MATERIAL_STATUSES = [
 ];
 
 const EXPENSE_CATEGORIES = ['MATERIAL', 'TOOLS', 'TRANSPORT', 'LABOR', 'SERVICES', 'EQUIPMENT', 'OTHER'];
+const PROJECT_DOCUMENT_TYPES = [
+  { value: 'ORDER', label: 'Orden' },
+  { value: 'INVOICE', label: 'Factura' },
+  { value: 'REPORT', label: 'Informe' },
+  { value: 'GUIDE', label: 'Guia' },
+  { value: 'OTHER', label: 'Otro' },
+];
 
 export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) {
   const params = useSearchParams();
@@ -60,6 +71,7 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
   const [project, setProject] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [materials, setMaterials] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +86,9 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
   >(null);
   const [saving, setSaving] = useState(false);
   const isClient = user?.role === 'CLIENT';
+  const isSupervisor = user?.role === 'FIELD_SUPERVISOR';
+  const canSeeFinancials = !isClient && !isSupervisor;
+  const canManageMaterials = !isClient && !isSupervisor;
 
   const [expenseForm, setExpenseForm] = useState({
     expenseCategory: 'MATERIAL',
@@ -82,8 +97,11 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
     supplierName: '',
     supplierRuc: '',
     invoiceNumber: '',
+    paymentMethod: '',
     expenseDate: new Date().toISOString().slice(0, 10),
   });
+  const [documentType, setDocumentType] = useState('ORDER');
+  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [materialForm, setMaterialForm] = useState({
     type: 'MATERIAL_CIVIL',
     description: '',
@@ -110,31 +128,38 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
     if (!id || !token) return;
     try {
       setLoading(true);
-      const [projectRes, summaryRes, materialsRes, activitiesRes, settingsRes] = await Promise.all([
+      const [projectRes, summaryRes, materialsRes, activitiesRes, documentsRes, settingsRes] = await Promise.all([
         api.get<any>(`/projects/${id}`, token),
-        isClient ? Promise.resolve(null) : api.get<any>(`/projects/${id}/summary`, token),
-        isClient ? Promise.resolve([]) : api.get<any[]>(`/projects/${id}/materials`, token),
+        canSeeFinancials ? api.get<any>(`/projects/${id}/summary`, token) : Promise.resolve(null),
+        canManageMaterials ? api.get<any[]>(`/projects/${id}/materials`, token) : Promise.resolve([]),
         api.get<any[]>(`/projects/${id}/progress/activities`, token),
+        isClient ? Promise.resolve([]) : api.get<any[]>(`/projects/${id}/documents`, token),
         api.get<any>('/config/company', token),
       ]);
       setProject(projectRes.data);
       setSummary(summaryRes);
       setMaterials(materialsRes || []);
       setActivities(activitiesRes || []);
+      setDocuments(documentsRes || []);
       setCompanySettings(settingsRes || {});
     } catch (error: any) {
       addToast(error.message, 'error');
     } finally {
       setLoading(false);
     }
-  }, [addToast, id, isClient, token]);
+  }, [addToast, canManageMaterials, canSeeFinancials, id, isClient, token]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const expenses = project?.expenses || [];
-  const progressAverage = Math.round(summary?.progressSummary?.averagePercent || 0);
+  const progressAverage = Math.round(
+    summary?.progressSummary?.averagePercent ??
+      (activities.length
+        ? activities.reduce((sum, activity) => sum + Number(activity.progressPercent || 0), 0) / activities.length
+        : 0),
+  );
   const pendingMaterials = materials.filter((item) => !['DELIVERED', 'CANCELLED'].includes(item.status)).length;
 
   const canSubmit = Boolean(token && id);
@@ -152,6 +177,7 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
         {
           ...expenseForm,
           amount: Number(expenseForm.amount),
+          paymentMethod: expenseForm.paymentMethod || 'CASH',
           documentType: 'INVOICE',
           documentNumber: expenseForm.invoiceNumber,
           expenseDate: new Date(expenseForm.expenseDate).toISOString(),
@@ -160,7 +186,7 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
       );
       addToast('Gasto registrado', 'success');
       setExpenseOpen(false);
-      setExpenseForm((current) => ({ ...current, description: '', amount: '', supplierName: '', supplierRuc: '', invoiceNumber: '' }));
+      setExpenseForm((current) => ({ ...current, description: '', amount: '', supplierName: '', supplierRuc: '', invoiceNumber: '', paymentMethod: '' }));
       load();
     } catch (error: any) {
       addToast(error.message, 'error');
@@ -179,11 +205,12 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
       const notes = Array.isArray(extraction.notes) ? extraction.notes.filter(Boolean).map(String) : [];
       setExpenseForm((current) => ({
         ...current,
-        supplierName: extraction.supplierName || current.supplierName,
+        supplierName: extraction.storeName || extraction.supplierName || current.supplierName,
         supplierRuc: extraction.supplierRuc || current.supplierRuc,
         invoiceNumber: extraction.documentNumber || current.invoiceNumber,
         amount: extraction.totalAmount ? String(extraction.totalAmount) : current.amount,
         expenseDate: extraction.issueDate || current.expenseDate,
+        paymentMethod: extraction.paymentMethod || current.paymentMethod,
       }));
       addToast(
         res.aiApplied
@@ -251,6 +278,53 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
         token,
       );
       addToast('Estado de material actualizado', 'success');
+      load();
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    }
+  };
+
+  const uploadProjectDocument = async (file: File | null) => {
+    if (!file || !token || !id) return;
+    try {
+      setUploadingDocument(true);
+      const storagePath = `projects/${id}/documents/${Date.now()}-${file.name}`;
+      const fileRef = ref(storage, storagePath);
+      const task = uploadBytesResumable(fileRef, file);
+      await new Promise<void>((resolve, reject) => {
+        task.on('state_changed', undefined, reject, () => resolve());
+      });
+      const url = await getDownloadURL(task.snapshot.ref);
+      await api.post(
+        `/projects/${id}/documents`,
+        {
+          type: documentType,
+          name: file.name,
+          url,
+          storagePath,
+          mimeType: file.type || null,
+          size: file.size,
+        },
+        token,
+      );
+      addToast('Archivo guardado en el proyecto', 'success');
+      load();
+    } catch (error: any) {
+      addToast(error.message, 'error');
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  const deleteProjectDocument = async (document: any) => {
+    if (!token || !id) return;
+    if (!confirm(`Eliminar archivo ${document.name}?`)) return;
+    try {
+      if (document.storagePath) {
+        await deleteObject(ref(storage, document.storagePath)).catch(() => undefined);
+      }
+      await api.delete(`/projects/${id}/documents/${document.id}`, token);
+      addToast('Archivo eliminado', 'success');
       load();
     } catch (error: any) {
       addToast(error.message, 'error');
@@ -397,11 +471,14 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
         </Button>
       </section>
 
-      {!isClient && <section className="grid gap-4 md:grid-cols-3">
+      {canSeeFinancials ? <section className="grid gap-4 md:grid-cols-3">
         <MetricCard label="Costos ejecutados" value={currency(summary?.totalSpent || 0)} hint={`${Math.round(summary?.percentUsed || 0)}% del presupuesto`} icon={DollarSign} />
         <MetricCard label="Materiales pendientes" value={pendingMaterials} hint={summary?.materialAlert?.level || 'GREEN'} icon={PackageCheck} />
         <MetricCard label="Avance promedio" value={`${progressAverage}%`} hint={`${summary?.progressSummary?.activities || 0} partidas`} icon={ClipboardList} />
-      </section>}
+      </section> : !isClient ? <section className="grid gap-4 md:grid-cols-2">
+        <MetricCard label="Facturas registradas" value={project._count?.expenses || 0} hint="Sin costo total" icon={DollarSign} />
+        <MetricCard label="Avance promedio" value={`${progressAverage}%`} hint={`${activities.length} partidas`} icon={ClipboardList} />
+      </section> : null}
 
       <Tabs defaultValue="progress" className="space-y-5">
         <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-lg border border-slate-200 bg-white p-1">
@@ -409,13 +486,17 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
             <ClipboardList className="mr-2 h-4 w-4" />
             Avances
           </TabsTrigger>
-          {!isClient && <TabsTrigger value="materials" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
+          {canManageMaterials && <TabsTrigger value="materials" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
             <PackageCheck className="mr-2 h-4 w-4" />
             Lista de materiales
           </TabsTrigger>}
           {!isClient && <TabsTrigger value="costs" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
             <DollarSign className="mr-2 h-4 w-4" />
-            Costos
+            {isSupervisor ? 'Facturas' : 'Costos'}
+          </TabsTrigger>}
+          {!isClient && <TabsTrigger value="documents" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
+            <FileText className="mr-2 h-4 w-4" />
+            Archivos
           </TabsTrigger>}
         </TabsList>
 
@@ -563,8 +644,12 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
           <Card className="rounded-lg border-slate-200">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle>Costos y facturacion</CardTitle>
-                <p className="mt-1 text-sm text-slate-500">Gastos del proyecto, OCR de factura y alimentacion de base historica de precios.</p>
+                <CardTitle>{isSupervisor ? 'Facturas del proyecto' : 'Costos y facturacion'}</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">
+                  {isSupervisor
+                    ? 'Carga de evidencias y lectura IA de comprobantes, sin acceso al costo total del proyecto.'
+                    : 'Gastos del proyecto, OCR de factura y alimentacion de base historica de precios.'}
+                </p>
               </div>
               <Button onClick={() => setExpenseOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -581,12 +666,12 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
                     <TableHead>RUC</TableHead>
                     <TableHead>Factura</TableHead>
                     <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
+                    {!isSupervisor && <TableHead className="text-right">Monto</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {expenses.length === 0 ? (
-                    <TableRow><TableCell colSpan={7}><EmptyState text="Aun no hay gastos registrados." /></TableCell></TableRow>
+                    <TableRow><TableCell colSpan={isSupervisor ? 6 : 7}><EmptyState text="Aun no hay gastos registrados." /></TableCell></TableRow>
                   ) : expenses.map((expense: any) => (
                     <TableRow key={expense.id}>
                       <TableCell className="font-mono font-black">{project.projectCode}</TableCell>
@@ -595,7 +680,74 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
                       <TableCell>{expense.supplierRuc || '-'}</TableCell>
                       <TableCell>{expense.invoiceNumber || expense.documentNumber || '-'}</TableCell>
                       <TableCell>{formatDate(expense.expenseDate)}</TableCell>
-                      <TableCell className="text-right font-mono font-black">{currency(expense.amount || 0)}</TableCell>
+                      {!isSupervisor && <TableCell className="text-right font-mono font-black">{currency(expense.amount || 0)}</TableCell>}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-0">
+          <Card className="rounded-lg border-slate-200">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Archivos del proyecto</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">Ordenes, facturas, informes, guias y otros documentos operativos.</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Select value={documentType} onValueChange={setDocumentType}>
+                  <SelectTrigger className="h-10 w-[150px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_DOCUMENT_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md bg-primary px-4 text-sm font-bold text-white hover:bg-primary/90">
+                  <Upload className="mr-2 h-4 w-4" />
+                  {uploadingDocument ? 'Subiendo...' : 'Subir archivo'}
+                  <input
+                    type="file"
+                    className="hidden"
+                    disabled={uploadingDocument}
+                    accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx"
+                    onChange={(event) => {
+                      void uploadProjectDocument(event.target.files?.[0] || null);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Archivo</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead className="w-[96px] text-right" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {documents.length === 0 ? (
+                    <TableRow><TableCell colSpan={4}><EmptyState text="Aun no hay archivos cargados." /></TableCell></TableRow>
+                  ) : documents.map((document) => (
+                    <TableRow key={document.id}>
+                      <TableCell className="font-bold">{PROJECT_DOCUMENT_TYPES.find(t => t.value === document.type)?.label || document.type}</TableCell>
+                      <TableCell>
+                        <a href={document.url} target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">{document.name}</a>
+                        <p className="text-xs text-slate-500">{document.mimeType || 'Archivo'} · {Math.round((document.size || 0) / 1024)} KB</p>
+                      </TableCell>
+                      <TableCell>{formatDate(document.createdAt)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" asChild>
+                          <a href={document.url} target="_blank" rel="noreferrer"><Download className="h-4 w-4" /></a>
+                        </Button>
+                        <Button variant="ghost" size="icon" className="text-rose-500" onClick={() => deleteProjectDocument(document)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -626,7 +778,7 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
             <Field label="Monto">
               <Input type="number" step="0.01" value={expenseForm.amount} onChange={(event) => setExpenseForm((current) => ({ ...current, amount: event.target.value }))} />
             </Field>
-            <Field label="Proveedor">
+            <Field label="Tienda / proveedor">
               <Input value={expenseForm.supplierName} onChange={(event) => setExpenseForm((current) => ({ ...current, supplierName: event.target.value }))} />
             </Field>
             <Field label="RUC">
@@ -635,13 +787,16 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
             <Field label="Numero de factura">
               <Input value={expenseForm.invoiceNumber} onChange={(event) => setExpenseForm((current) => ({ ...current, invoiceNumber: event.target.value }))} />
             </Field>
+            <Field label="Modo de pago">
+              <Input value={expenseForm.paymentMethod} onChange={(event) => setExpenseForm((current) => ({ ...current, paymentMethod: event.target.value }))} placeholder="Efectivo, transferencia, tarjeta..." />
+            </Field>
             <Field label="Foto de factura">
               <label className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 text-sm font-bold text-slate-600 hover:bg-slate-50">
                 <Upload className="mr-2 h-4 w-4" />
                 Leer con IA
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   className="hidden"
                   disabled={saving}
                   onChange={(event) => {

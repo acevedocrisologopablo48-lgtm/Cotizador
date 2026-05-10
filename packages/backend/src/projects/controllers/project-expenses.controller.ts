@@ -20,11 +20,13 @@ export class ProjectExpensesController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('category') category?: string,
+    @CurrentUser() user?: any,
   ) {
     return this.expensesService.findByProject(projectId, {
       page: page ? parseInt(page) : undefined,
       pageSize: pageSize ? parseInt(pageSize) : undefined,
       category,
+      user,
     });
   }
 

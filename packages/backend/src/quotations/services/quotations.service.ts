@@ -12,6 +12,7 @@ import {
 } from '@fym/shared';
 
 import { AppConfigService } from '../../app-config/app-config.service';
+import { ProjectsService } from '../../projects/services/projects.service';
 
 @Injectable()
 export class QuotationsService {
@@ -26,10 +27,37 @@ export class QuotationsService {
     private firebase: FirebaseService,
     private calculator: QuotationCalculatorService,
     private configService: AppConfigService,
+    private projectsService: ProjectsService,
   ) {}
 
   private get col() {
     return this.firebase.db.collection('quotations');
+  }
+
+  private extractSlaSubject(value: unknown) {
+    const raw = String(value || '').trim();
+    const withoutPrefix = raw.replace(/^SLA\s*[–-]\s*/i, '');
+    return withoutPrefix
+      .replace(/\s*N[°º]\s*[A-Z]+-\d{4}-\d{3}\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500) || 'Propuesta';
+  }
+
+  private formatSlaTitle(subject: string, quotationNumber: string) {
+    return `SLA – ${this.extractSlaSubject(subject)} N°${quotationNumber}`;
+  }
+
+  private async createDefaultItemsSection(quotationId: string, now: Date) {
+    const sectionRef = this.col.doc(quotationId).collection('sections').doc(this.firebase.generateId());
+    await sectionRef.set({
+      name: 'Items',
+      description: '',
+      sortOrder: 0,
+      subtotal: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   async findAll(params: {
@@ -375,6 +403,8 @@ export class QuotationsService {
     const number = await this.generateQuotationNumber();
     const id = this.firebase.generateId();
     const now = new Date();
+    const referenceSubject = this.extractSlaSubject(data.referenceSubject || data.title);
+    const title = this.formatSlaTitle(referenceSubject, number);
 
     const companySettings = await this.configService.getCompanySettings();
 
@@ -390,8 +420,9 @@ export class QuotationsService {
 
     const docData = {
       ...data,
+      title,
       documentMode,
-      referenceSubject: typeof data.referenceSubject === 'string' ? data.referenceSubject.trim().slice(0, 500) : '',
+      referenceSubject: referenceSubject.slice(0, 500),
       issuePlace: typeof data.issuePlace === 'string' ? data.issuePlace.trim().slice(0, 400) : '',
       issueDate:
         data.issueDate === null || data.issueDate === undefined || data.issueDate === ''
@@ -406,6 +437,7 @@ export class QuotationsService {
       validityDays: data.validityDays ?? companySettings.defaultValidityDays ?? 15,
       currency: data.currency ?? companySettings.defaultCurrency ?? 'PEN',
       igvPercentage: data.igvPercentage ?? companySettings.defaultIgvPercentage ?? 18,
+      profitMarginPercentage: 0,
       quotationNumber: number,
       status: 'DRAFT',
       createdBy: userId,
@@ -415,6 +447,7 @@ export class QuotationsService {
       updatedAt: now,
     };
     await this.col.doc(id).set(docData);
+    await this.createDefaultItemsSection(id, now);
     return { id, ...docData };
   }
 
@@ -483,7 +516,16 @@ export class QuotationsService {
     }
 
     await this.col.doc(id).update(data);
-    return { id, ...quotation, ...data };
+    let project: any = null;
+    if (newStatus === QuotationStatus.APPROVED) {
+      try {
+        project = await this.projectsService.createFromQuotation(id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes('Ya existe un proyecto')) throw error;
+      }
+    }
+    return { id, ...quotation, ...data, project };
   }
 
   async recalculate(id: string) {

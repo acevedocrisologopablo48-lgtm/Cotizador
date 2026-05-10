@@ -8,9 +8,10 @@ import { QuotationItemsService } from './services/quotation-items.service';
 import { QuotationCalculatorService } from './services/quotation-calculator.service';
 import { QuotationPdfService } from './services/quotation-pdf.service';
 import { AppConfigModule } from '../app-config/app-config.module';
+import { ProjectsModule } from '../projects/projects.module';
 
 @Module({
-  imports: [AppConfigModule],
+  imports: [AppConfigModule, ProjectsModule],
   controllers: [
     QuotationsController,
     QuotationSectionsController,

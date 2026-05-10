@@ -15,6 +15,21 @@ export class QuotationsController {
     private readonly quotationPdfService: QuotationPdfService,
   ) {}
 
+  private buildPdfFilename(quotation: any, fallbackId: string) {
+    const rawTitle = String(quotation?.title || '').trim();
+    const rawSubject = String(quotation?.referenceSubject || rawTitle || 'Propuesta').trim();
+    const subject = rawSubject
+      .replace(/^SLA\s*[–-]\s*/i, '')
+      .replace(/\s*N[°º]\s*[A-Z]+-\d{4}-\d{3}\s*$/i, '')
+      .replace(/[\\/:*?"<>|\r\n]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim() || 'Propuesta';
+    const number = String(quotation?.quotationNumber || fallbackId)
+      .replace(/[\\/:*?"<>|\r\n]+/g, ' ')
+      .trim();
+    return `SLA – ${subject} N°${number}.pdf`;
+  }
+
   @Get()
   @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'VIEWER')
   findAll(
@@ -66,9 +81,16 @@ export class QuotationsController {
       }
     }
     const buffer = await this.quotationPdfService.generatePdfBuffer(id, quotation);
-    const safeName = String(quotation.quotationNumber || id).replace(/[^\w.-]+/g, '_');
+    const filename = this.buildPdfFilename(quotation, id);
+    const asciiFallback = filename
+      .normalize('NFD')
+      .replace(/[^\x20-\x7E]/g, '')
+      .replace(/["\\]/g, '')
+      .replace(/[/:*?<>|]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim() || `SLA-${id}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="cotizacion-${safeName}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.send(buffer);
   }
 

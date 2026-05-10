@@ -8,11 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
-import { ArrowLeft, Settings2, Plus, Trash2, GripVertical, Users, Briefcase, Calendar, Info, Calculator, DollarSign, FileText, LayoutGrid } from 'lucide-react';
+import { ArrowLeft, Settings2, Plus, Trash2, GripVertical, Users, Briefcase, Calendar, Info, Calculator, DollarSign, LayoutGrid } from 'lucide-react';
 import {
   DEFAULT_PROJECT_TECHNICAL_SECTIONS,
   QuotationDocumentMode,
@@ -33,7 +32,7 @@ export default function NewQuotationPage() {
     companyId: '', contactId: '', agreementId: '', tipo: '',
     title: '', description: '',
     validityDays: '15', currency: 'PEN', igvPercentage: '18',
-    generalExpensesPercentage: '10', profitMarginPercentage: '15',
+    generalExpensesPercentage: '10', profitMarginPercentage: '0',
     introductionText: '', termsAndConditions: '', deliveryTimeDays: '', warrantyText: '',
     documentMode: 'SIMPLE' as 'SIMPLE' | 'PROJECT',
     referenceSubject: '',
@@ -83,12 +82,12 @@ export default function NewQuotationPage() {
         .then(r => {
           setContacts(r.data?.contacts || []);
           setAgreements(r.data?.agreements || []);
-          // Auto-suggest title with client name + month/year if still empty
+          // Auto-suggest the SLA subject. The backend appends the official correlativo.
           const tradeName: string = r.data?.tradeName || '';
           if (tradeName) {
             const now = new Date();
             const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-            const suggestion = `${tradeName} - ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+            const suggestion = `SLA - ${tradeName} - ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
             setForm(f => ({ ...f, title: f.title.trim() === '' ? suggestion : f.title }));
           }
         })
@@ -114,7 +113,7 @@ export default function NewQuotationPage() {
         currency: form.currency,
         igvPercentage: parseFloat(form.igvPercentage) || 18,
         generalExpensesPercentage: parseFloat(form.generalExpensesPercentage),
-        profitMarginPercentage: parseFloat(form.profitMarginPercentage),
+        profitMarginPercentage: 0,
       };
       if (form.tipo) body.tipo = form.tipo;
       if (form.contactId) body.contactId = form.contactId;
@@ -239,9 +238,14 @@ export default function NewQuotationPage() {
                     </SelectTrigger>
                     <SelectContent className="rounded-xl">
                       {companies.map(c => (
-                        <SelectItem key={c.id} value={c.id} className="rounded-lg">
+                        <SelectItem
+                          key={c.id}
+                          value={c.id}
+                          label={c.tradeName || c.businessName || c.name || 'Cliente'}
+                          className="rounded-lg"
+                        >
                           <div className="flex flex-col">
-                            <span className="font-bold">{c.tradeName}</span>
+                            <span className="font-bold">{c.tradeName || c.businessName || c.name || 'Cliente'}</span>
                             <span className="text-[10px] text-slate-400 font-mono">{c.ruc || 'SIN RUC'}</span>
                           </div>
                         </SelectItem>
@@ -305,46 +309,6 @@ export default function NewQuotationPage() {
                   value={form.description} 
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))} 
                   placeholder="Breve descripción del alcance para referencia interna o externa..."
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200/60 shadow-sm overflow-hidden rounded-2xl">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4">
-              <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                <div className="p-1.5 bg-emerald-100 rounded-lg">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                </div>
-                Textos de la Propuesta
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-6">
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Introducción Personalizada</Label>
-                <textarea 
-                  className="form-textarea min-h-[80px]" 
-                  value={form.introductionText} 
-                  onChange={e => setForm(f => ({ ...f, introductionText: e.target.value }))} 
-                  placeholder="Estimados, por intermedio de la presente hacemos llegar..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Condiciones del Servicio</Label>
-                <textarea 
-                  className="form-textarea min-h-[120px]" 
-                  value={form.termsAndConditions} 
-                  onChange={e => setForm(f => ({ ...f, termsAndConditions: e.target.value }))} 
-                  placeholder="Detalle de formas de pago, exclusiones y responsabilidades..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Garantía del Trabajo</Label>
-                <Input 
-                  className="form-field" 
-                  value={form.warrantyText} 
-                  onChange={e => setForm(f => ({ ...f, warrantyText: e.target.value }))} 
-                  placeholder="Ej: 12 meses contra defectos de fabricación" 
                 />
               </div>
             </CardContent>
@@ -576,14 +540,6 @@ export default function NewQuotationPage() {
                     <p className="text-[10px] text-slate-400 font-medium">Porcentaje (%)</p>
                   </div>
                   <Input type="number" step="0.1" className="w-20 h-9 rounded-lg border-slate-200 font-mono font-bold text-right" value={form.generalExpensesPercentage} onChange={e => setForm(f => ({ ...f, generalExpensesPercentage: e.target.value }))} />
-                </div>
-
-                <div className="flex items-center justify-between group">
-                  <div className="space-y-0.5">
-                    <p className="text-xs font-bold text-slate-600">Utilidad / Margen</p>
-                    <p className="text-[10px] text-slate-400 font-medium">Porcentaje (%)</p>
-                  </div>
-                  <Input type="number" step="0.1" className="w-20 h-9 rounded-lg border-slate-200 font-mono font-bold text-right" value={form.profitMarginPercentage} onChange={e => setForm(f => ({ ...f, profitMarginPercentage: e.target.value }))} />
                 </div>
 
                 <div className="flex items-center justify-between group">

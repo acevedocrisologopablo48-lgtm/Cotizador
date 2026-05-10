@@ -35,13 +35,64 @@ export class QuotationItemsService {
     }
   }
 
+  private sanitizeCostBreakdown(items: any[]) {
+    return (Array.isArray(items) ? items : [])
+      .map((item) => {
+        const quantity = Number(item.quantity);
+        const unitCost = Number(item.unitCost);
+        const subtotal = Number.isFinite(quantity) && Number.isFinite(unitCost)
+          ? quantity * unitCost
+          : 0;
+        return {
+          category: String(item.category || 'Insumos').trim(),
+          description: String(item.description || '').trim(),
+          unit: String(item.unit || 'UND').trim(),
+          quantity: Number.isFinite(quantity) ? quantity : 0,
+          unitCost: Number.isFinite(unitCost) ? unitCost : 0,
+          subtotal,
+        };
+      })
+      .filter((item) => item.description && item.quantity > 0 && item.unitCost >= 0);
+  }
+
+  private buildPricingData(data: any, existing?: any) {
+    const quantity = Number(data.quantity ?? existing?.quantity ?? 0);
+    const costBreakdown = this.sanitizeCostBreakdown(data.costBreakdown ?? existing?.costBreakdown ?? []);
+    if (costBreakdown.length === 0) {
+      const unitPrice = Number(data.unitCost ?? data.unitPrice ?? existing?.unitPrice ?? existing?.unitCost ?? 0);
+      return {
+        ...data,
+        unitPrice,
+        subtotal: quantity * unitPrice,
+        costBreakdown: data.costBreakdown === undefined ? existing?.costBreakdown : [],
+        profitabilityPercentage: data.costBreakdown === undefined ? (data.profitabilityPercentage ?? existing?.profitabilityPercentage ?? null) : null,
+        costTotal: data.costBreakdown === undefined ? (data.costTotal ?? existing?.costTotal ?? null) : null,
+        saleTotal: quantity * unitPrice,
+      };
+    }
+
+    const profitabilityPercentage = Math.max(0, Number(data.profitabilityPercentage ?? existing?.profitabilityPercentage ?? 0) || 0);
+    const costTotal = costBreakdown.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const saleTotal = costTotal * (1 + profitabilityPercentage / 100);
+    const unitPrice = quantity > 0 ? saleTotal / quantity : 0;
+
+    return {
+      ...data,
+      costBreakdown,
+      profitabilityPercentage,
+      costTotal,
+      saleTotal,
+      unitPrice,
+      subtotal: saleTotal,
+    };
+  }
+
   async create(quotationId: string, sectionId: string, data: any) {
     await this.assertEditable(quotationId);
-    const subtotal = Number(data.quantity) * Number(data.unitCost ?? data.unitPrice ?? 0);
     const id = this.firebase.generateId();
     const existing = await this.col(quotationId, sectionId).get();
     const sortOrder = data.sortOrder ?? existing.size;
-    const docData = { ...data, subtotal, sortOrder };
+    const docData = { ...this.buildPricingData(data), sortOrder };
     await this.col(quotationId, sectionId).doc(id).set(docData);
     await this.calculator.recalculateQuotation(quotationId);
     return { id, ...docData };
@@ -54,17 +105,7 @@ export class QuotationItemsService {
     if (!doc.exists) throw new NotFoundException('Item no encontrado');
 
     const existing = doc.data()!;
-    const updateData = { ...data };
-    const incomingPrice = data.unitCost ?? data.unitPrice;
-    const existingPrice = existing.unitCost ?? existing.unitPrice ?? 0;
-
-    if (data.quantity !== undefined && incomingPrice !== undefined) {
-      updateData.subtotal = Number(data.quantity) * Number(incomingPrice);
-    } else if (data.quantity !== undefined) {
-      updateData.subtotal = Number(data.quantity) * Number(existingPrice);
-    } else if (incomingPrice !== undefined) {
-      updateData.subtotal = Number(existing.quantity ?? 0) * Number(incomingPrice);
-    }
+    const updateData = this.buildPricingData(data, existing);
 
     await docRef.update(updateData);
     await this.calculator.recalculateQuotation(quotationId);

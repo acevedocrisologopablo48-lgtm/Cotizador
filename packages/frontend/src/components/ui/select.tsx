@@ -93,15 +93,15 @@ function SelectContent({ children, className }: { children: React.ReactNode; cla
   );
 }
 
-function SelectItem({ value, children, className }: { value: string; children: React.ReactNode; className?: string }) {
+function SelectItem({ value, children, className, label }: { value: string; children: React.ReactNode; className?: string; label?: string }) {
   const ctx = React.useContext(SelectContext);
   const isSelected = ctx.value === value;
 
   React.useEffect(() => {
-    const text = typeof children === 'string' ? children : String(children ?? value);
+    const text = label || (typeof children === 'string' ? children : String(children ?? value));
     ctx.registerLabel(value, text);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, children]);
+  }, [value, children, label]);
 
   return (
     <div

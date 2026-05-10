@@ -9,6 +9,7 @@ import { ProjectActivityController } from './controllers/project-activity.contro
 import { ProjectMaterialsController } from './controllers/project-materials.controller';
 import { ProjectProgressController } from './controllers/project-progress.controller';
 import { ProjectQueriesController } from './controllers/project-queries.controller';
+import { ProjectDocumentsController } from './controllers/project-documents.controller';
 import { ProjectsService } from './services/projects.service';
 import { ProjectExpensesService } from './services/project-expenses.service';
 import { ProjectWorkforceService } from './services/project-workforce.service';
@@ -20,6 +21,7 @@ import { ProjectAiService } from './services/project-ai.service';
 import { ProjectMaterialsService } from './services/project-materials.service';
 import { ProjectProgressService } from './services/project-progress.service';
 import { ProjectQueriesService } from './services/project-queries.service';
+import { ProjectDocumentsService } from './services/project-documents.service';
 
 @Module({
   controllers: [
@@ -35,6 +37,7 @@ import { ProjectQueriesService } from './services/project-queries.service';
     ProjectMaterialsController,
     ProjectProgressController,
     ProjectQueriesController,
+    ProjectDocumentsController,
   ],
   providers: [
     ProjectsService,
@@ -48,6 +51,7 @@ import { ProjectQueriesService } from './services/project-queries.service';
     ProjectMaterialsService,
     ProjectProgressService,
     ProjectQueriesService,
+    ProjectDocumentsService,
   ],
   exports: [ProjectsService, ProjectTasksService, ProjectMilestonesService],
 })

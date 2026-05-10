@@ -46,7 +46,7 @@ export class ProjectsController {
   }
 
   @Get(':id/summary')
-  @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR', 'VIEWER')
+  @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'VIEWER')
   getSummary(@Param('id') id: string) {
     return this.projectsService.getSummary(id);
   }

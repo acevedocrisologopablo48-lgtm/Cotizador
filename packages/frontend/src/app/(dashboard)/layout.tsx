@@ -12,6 +12,7 @@ import {
   MessageSquareText,
   FolderKanban,
   BarChart2,
+  Store,
   Wallet,
   LogOut,
   Menu,
@@ -42,9 +43,10 @@ const navGroups: Array<{ title: string; items: NavItem[] }> = [
   {
     title: 'Comercial y Ventas',
     items: [
-      { href: '/clients', label: 'Clientes', icon: Users, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT, UserRole.VIEWER] },
-      { href: '/pricing', label: 'Matriz de Costos', icon: BarChart2, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT, UserRole.VIEWER] },
-      { href: '/quotations', label: 'Cotizaciones', icon: FileText, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT, UserRole.VIEWER] },
+      { href: '/clients', label: 'Clientes', icon: Users, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.ACCOUNTANT, UserRole.VIEWER] },
+      { href: '/pricing', label: 'Matriz de Costos', icon: BarChart2, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.ACCOUNTANT, UserRole.VIEWER] },
+      { href: '/providers', label: 'Proveedores', icon: Store, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.ACCOUNTANT, UserRole.VIEWER] },
+      { href: '/quotations', label: 'Cotizaciones', icon: FileText, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.ACCOUNTANT, UserRole.VIEWER] },
     ]
   },
   {
@@ -57,7 +59,7 @@ const navGroups: Array<{ title: string; items: NavItem[] }> = [
   {
     title: 'Finanzas',
     items: [
-      { href: '/petty-cash', label: 'Caja Chica', icon: Wallet, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.FIELD_SUPERVISOR, UserRole.ACCOUNTANT] },
+      { href: '/petty-cash', label: 'Caja Chica', icon: Wallet, roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER, UserRole.ACCOUNTANT] },
     ]
   },
   {
@@ -70,7 +72,6 @@ const navGroups: Array<{ title: string; items: NavItem[] }> = [
         roles: [
           UserRole.ADMIN,
           UserRole.MANAGER,
-          UserRole.FIELD_SUPERVISOR,
           UserRole.ACCOUNTANT,
           UserRole.ENGINEER,
         ],
@@ -94,7 +95,6 @@ const navGroups: Array<{ title: string; items: NavItem[] }> = [
         roles: [
           UserRole.ADMIN,
           UserRole.MANAGER,
-          UserRole.FIELD_SUPERVISOR,
           UserRole.ACCOUNTANT,
           UserRole.ENGINEER,
         ],

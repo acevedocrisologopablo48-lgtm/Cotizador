@@ -17,8 +17,17 @@ export class ProjectExpensesService {
     }
   }
 
-  async findByProject(projectId: string, params: { page?: number; pageSize?: number; category?: string }) {
-    const { page: rawPage, pageSize: rawPageSize, category } = params;
+  private redactForSupervisor(item: any) {
+    return {
+      ...item,
+      amount: null,
+      unitPrice: null,
+      totalAmount: null,
+    };
+  }
+
+  async findByProject(projectId: string, params: { page?: number; pageSize?: number; category?: string; user?: any }) {
+    const { page: rawPage, pageSize: rawPageSize, category, user } = params;
     const page = Math.max(1, Number(rawPage) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(rawPageSize) || 20));
 
@@ -47,7 +56,11 @@ export class ProjectExpensesService {
       }
     }
 
-    return { data, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+    const visibleData = user?.role === 'FIELD_SUPERVISOR'
+      ? data.map(item => this.redactForSupervisor(item))
+      : data;
+
+    return { data: visibleData, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
   }
 
   async create(projectId: string, data: any, userId: string) {

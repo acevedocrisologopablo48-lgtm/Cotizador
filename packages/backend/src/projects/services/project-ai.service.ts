@@ -4,8 +4,10 @@ import { ConfigService } from '@nestjs/config';
 type InvoiceExtraction = {
   supplierName: string | null;
   supplierRuc: string | null;
+  storeName: string | null;
   documentNumber: string | null;
   issueDate: string | null;
+  paymentMethod: string | null;
   totalAmount: number | null;
   currency: string | null;
   confidence: number;
@@ -51,8 +53,10 @@ export class ProjectAiService {
     const fallback: InvoiceExtraction = {
       supplierName: null,
       supplierRuc: null,
+      storeName: null,
       documentNumber: null,
       issueDate: null,
+      paymentMethod: null,
       totalAmount: null,
       currency: 'PEN',
       confidence: 0,
@@ -80,9 +84,11 @@ export class ProjectAiService {
                 {
                   type: 'input_text',
                   text:
-                    'Extrae datos de esta factura o boleta peruana. Devuelve solo JSON valido con estas claves: supplierName, supplierRuc, documentNumber, issueDate (YYYY-MM-DD o null), totalAmount (numero o null), currency, confidence (0 a 1), notes (array de strings). No inventes valores.',
+                    'Extrae datos de esta factura, boleta o comprobante peruano. Devuelve solo JSON valido con estas claves: supplierName, supplierRuc, storeName, documentNumber, issueDate (YYYY-MM-DD o null), paymentMethod, totalAmount (numero o null), currency, confidence (0 a 1), notes (array de strings). Usa storeName para la tienda o comercio. No inventes valores.',
                 },
-                { type: 'input_image', image_url: imageDataUrl },
+                this.isPdfDataUrl(imageDataUrl)
+                  ? { type: 'input_file', filename: 'factura.pdf', file_data: imageDataUrl }
+                  : { type: 'input_image', image_url: imageDataUrl },
               ],
             },
           ],
@@ -94,8 +100,10 @@ export class ProjectAiService {
           extraction: {
             supplierName: this.nullableString(parsed.supplierName),
             supplierRuc: this.nullableString(parsed.supplierRuc),
+            storeName: this.nullableString(parsed.storeName) || this.nullableString(parsed.supplierName),
             documentNumber: this.nullableString(parsed.documentNumber),
             issueDate: this.nullableString(parsed.issueDate),
+            paymentMethod: this.nullableString(parsed.paymentMethod),
             totalAmount: this.nullableNumber(parsed.totalAmount),
             currency: this.nullableString(parsed.currency) || 'PEN',
             confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
@@ -169,6 +177,23 @@ export class ProjectAiService {
   }
 
   private async extractInvoiceWithLocalOcr(imageDataUrl: string): Promise<{ extraction: InvoiceExtraction; aiApplied: boolean }> {
+    if (this.isPdfDataUrl(imageDataUrl)) {
+      return {
+        extraction: {
+          supplierName: null,
+          supplierRuc: null,
+          storeName: null,
+          documentNumber: null,
+          issueDate: null,
+          paymentMethod: null,
+          totalAmount: null,
+          currency: 'PEN',
+          confidence: 0,
+          notes: ['La lectura local de PDF no esta disponible; complete los campos manualmente o configure IA.'],
+        },
+        aiApplied: false,
+      };
+    }
     const { recognize } = await import('tesseract.js');
     const image = this.dataUrlToBuffer(imageDataUrl);
     const result = await recognize(image, 'eng');
@@ -200,6 +225,10 @@ export class ProjectAiService {
     return Buffer.from(match[1], 'base64');
   }
 
+  private isPdfDataUrl(dataUrl: string) {
+    return /^data:application\/pdf;base64,/i.test(dataUrl);
+  }
+
   private parseInvoiceText(text: string, confidence: number): InvoiceExtraction {
     const normalized = text
       .replace(/\r/g, '\n')
@@ -221,8 +250,10 @@ export class ProjectAiService {
     return {
       supplierName,
       supplierRuc,
+      storeName: supplierName,
       documentNumber,
       issueDate,
+      paymentMethod: this.extractPaymentMethod(compact),
       totalAmount,
       currency: /US\$|USD|DOLAR/i.test(compact) ? 'USD' : 'PEN',
       confidence,
@@ -267,6 +298,15 @@ export class ProjectAiService {
       .map((match) => this.parseMoney(match[1]))
       .filter((value): value is number => value !== null && value > 0);
     return allAmounts.length ? Math.max(...allAmounts) : null;
+  }
+
+  private extractPaymentMethod(text: string): string | null {
+    const direct = text.match(/\b(YAPE|PLIN)\b/i)?.[1];
+    if (direct) return direct.toUpperCase();
+    if (/TRANSFERENCIA|DEPOSITO|DEP[OÓ]SITO/i.test(text)) return 'TRANSFERENCIA';
+    if (/VISA|MASTERCARD|TARJETA|CREDITO|CR[ÉE]DITO|DEBITO|D[ÉE]BITO/i.test(text)) return 'TARJETA';
+    if (/EFECTIVO|CASH/i.test(text)) return 'EFECTIVO';
+    return null;
   }
 
   private parseMoney(value: string): number | null {

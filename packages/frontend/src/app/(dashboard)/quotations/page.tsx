@@ -152,6 +152,7 @@ function QuotationsPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [companies, setCompanies] = useState<any[]>([]);
   const [quotationTypes, setQuotationTypes] = useState<string[]>([]);
   const [contactFilter, setContactFilter] = useState(() => searchParams.get('contactId') || '');
@@ -223,6 +224,20 @@ function QuotationsPageInner() {
       addToast(e.message, 'error');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const approveQuotation = async (quotation: any) => {
+    if (!token) return;
+    try {
+      setApprovingId(quotation.id);
+      const res = await api.patch<any>(`/quotations/${quotation.id}/status`, { status: 'APPROVED' }, token);
+      addToast(res.project ? 'Cotizacion aprobada y proyecto creado' : 'Cotizacion aprobada', 'success');
+      load(meta.page);
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    } finally {
+      setApprovingId(null);
     }
   };
 
@@ -504,6 +519,15 @@ function QuotationsPageInner() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
+                            {q.status !== 'APPROVED' && q.status !== 'INVOICED' && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); approveQuotation(q); }}
+                                disabled={approvingId === q.id}
+                                className="opacity-0 group-hover:opacity-100 transition-all h-9 rounded-xl px-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50"
+                              >
+                                {approvingId === q.id ? 'Aprobando...' : 'Aprobar'}
+                              </button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

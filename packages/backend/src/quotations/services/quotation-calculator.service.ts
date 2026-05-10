@@ -23,7 +23,7 @@ export class QuotationCalculatorService {
 
       for (const itemDoc of itemsSnap.docs) {
         const item = itemDoc.data();
-        const itemSubtotal = Number(item.quantity || 0) * Number(item.unitPrice ?? item.unitCost ?? 0);
+        const itemSubtotal = Number(item.saleTotal ?? Number(item.quantity || 0) * Number(item.unitPrice ?? item.unitCost ?? 0));
         
         batch.update(itemDoc.ref, { subtotal: itemSubtotal });
         sectionSubtotal += itemSubtotal;

@@ -14,6 +14,25 @@ export class ProjectsService {
     return this.firebase.db.collection('projects');
   }
 
+  private canSeeProjectTotals(user?: any) {
+    return user?.role !== 'CLIENT' && user?.role !== 'FIELD_SUPERVISOR';
+  }
+
+  private withoutProjectTotals(project: any) {
+    if (!project) return project;
+    delete project.approvedBudget;
+    if (project.quotation) delete project.quotation.total;
+    if (Array.isArray(project.expenses)) {
+      project.expenses = project.expenses.map((expense: any) => ({
+        ...expense,
+        amount: null,
+        unitPrice: null,
+        totalAmount: null,
+      }));
+    }
+    return project;
+  }
+
   async findAll(params: {
     page?: number;
     pageSize?: number;
@@ -72,7 +91,12 @@ export class ProjectsService {
       const c = item.companyId ? companyMap.get(item.companyId) : null;
       if (c) item.company = { id: item.companyId, tradeName: c.tradeName };
       const q = item.quotationId ? quotationMap.get(item.quotationId) : null;
-      if (q) item.quotation = { id: item.quotationId, quotationNumber: q.quotationNumber, total: q.total };
+      if (q) {
+        item.quotation = this.canSeeProjectTotals(user)
+          ? { id: item.quotationId, quotationNumber: q.quotationNumber, total: q.total }
+          : { id: item.quotationId, quotationNumber: q.quotationNumber };
+      }
+      if (!this.canSeeProjectTotals(user)) delete item.approvedBudget;
     }
 
     await Promise.all(
@@ -114,11 +138,15 @@ export class ProjectsService {
     }
     if (project.quotationId) {
       const q = await this.firebase.db.collection('quotations').doc(project.quotationId).get();
-      if (q.exists) project.quotation = { id: q.id, quotationNumber: q.data()?.quotationNumber, total: q.data()?.total, title: q.data()?.title };
+      if (q.exists) {
+        project.quotation = this.canSeeProjectTotals(user)
+          ? { id: q.id, quotationNumber: q.data()?.quotationNumber, total: q.data()?.total, title: q.data()?.title }
+          : { id: q.id, quotationNumber: q.data()?.quotationNumber, title: q.data()?.title };
+      }
     }
 
     if (user?.role === 'CLIENT') {
-      return project;
+      return this.withoutProjectTotals(project);
     }
 
     // Populate subcollections
@@ -152,7 +180,7 @@ export class ProjectsService {
 
     project._count = { expenses: expCount, workforceLogs: wfCount, equipmentLogs: eqCount };
 
-    return project;
+    return this.canSeeProjectTotals(user) ? project : this.withoutProjectTotals(project);
   }
 
   async create(data: any) {

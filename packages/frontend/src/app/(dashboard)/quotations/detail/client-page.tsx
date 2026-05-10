@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -87,9 +87,225 @@ interface ItemForm {
   quantity: string;
   unitPrice: string;
   longDescription: string;
+  profitabilityPercentage: string;
+  costBreakdown: CostBreakdownRow[];
 }
 
-const EMPTY_ITEM: ItemForm = { description: '', unit: 'UND', quantity: '', unitPrice: '', longDescription: '' };
+interface CostBreakdownRow {
+  category: string;
+  description: string;
+  unit: string;
+  quantity: string;
+  unitCost: string;
+}
+
+const EMPTY_COST_ROW: CostBreakdownRow = { category: 'Insumos', description: '', unit: 'UND', quantity: '', unitCost: '' };
+const EMPTY_ITEM: ItemForm = {
+  description: '',
+  unit: 'UND',
+  quantity: '',
+  unitPrice: '',
+  longDescription: '',
+  profitabilityPercentage: '0',
+  costBreakdown: [],
+};
+
+const COST_CATEGORIES = ['Insumos', 'Maquinarias', 'Operarios', 'Herramientas', 'Otros'];
+
+const toNumber = (value: string | number | null | undefined) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const costRowSubtotal = (row: CostBreakdownRow) => toNumber(row.quantity) * toNumber(row.unitCost);
+
+const hasValidCostBreakdown = (form: ItemForm) =>
+  form.costBreakdown.some(row => row.description.trim() && toNumber(row.quantity) > 0 && toNumber(row.unitCost) >= 0);
+
+const priceSummary = (form: ItemForm) => {
+  const hasBreakdown = hasValidCostBreakdown(form);
+  const costTotal = form.costBreakdown
+    .filter(row => row.description.trim() && toNumber(row.quantity) > 0 && toNumber(row.unitCost) >= 0)
+    .reduce((sum, row) => sum + costRowSubtotal(row), 0);
+  const profitabilityPercentage = toNumber(form.profitabilityPercentage);
+  const saleTotal = hasBreakdown ? costTotal * (1 + profitabilityPercentage / 100) : toNumber(form.quantity) * toNumber(form.unitPrice);
+  const unitPrice = toNumber(form.quantity) > 0 ? saleTotal / toNumber(form.quantity) : 0;
+  return { costTotal, profitabilityPercentage, saleTotal, unitPrice };
+};
+
+const hydrateItemForm = (item: any): ItemForm => ({
+  description: item.description || '',
+  unit: item.unit || 'UND',
+  quantity: String(item.quantity ?? ''),
+  unitPrice: String(item.unitPrice ?? ''),
+  longDescription: String(item.longDescription ?? ''),
+  profitabilityPercentage: String(item.profitabilityPercentage ?? '0'),
+  costBreakdown: Array.isArray(item.costBreakdown)
+    ? item.costBreakdown.map((row: any) => ({
+        category: String(row.category || 'Insumos'),
+        description: String(row.description || ''),
+        unit: String(row.unit || 'UND'),
+        quantity: String(row.quantity ?? ''),
+        unitCost: String(row.unitCost ?? ''),
+      }))
+    : [],
+});
+
+const serializeItemForm = (form: ItemForm) => {
+  const summary = priceSummary(form);
+  const hasBreakdown = hasValidCostBreakdown(form);
+  return {
+    description: form.description.trim(),
+    unit: form.unit,
+    quantity: toNumber(form.quantity),
+    unitPrice: hasBreakdown ? summary.unitPrice : toNumber(form.unitPrice),
+    longDescription: form.longDescription.trim() || undefined,
+    profitabilityPercentage: hasBreakdown ? summary.profitabilityPercentage : undefined,
+    costBreakdown: hasBreakdown
+      ? form.costBreakdown
+          .filter(row => row.description.trim() && toNumber(row.quantity) > 0 && toNumber(row.unitCost) >= 0)
+          .map(row => ({
+            category: row.category,
+            description: row.description.trim(),
+            unit: row.unit,
+            quantity: toNumber(row.quantity),
+            unitCost: toNumber(row.unitCost),
+          }))
+      : [],
+  };
+};
+
+function CostBreakdownEditor({
+  form,
+  onChange,
+  currency,
+}: {
+  form: ItemForm;
+  onChange: (next: ItemForm) => void;
+  currency: string;
+}) {
+  const summary = priceSummary(form);
+  const hasRows = form.costBreakdown.length > 0;
+  const formatMoney = (value: number) =>
+    value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const updateRow = (index: number, patch: Partial<CostBreakdownRow>) => {
+    onChange({
+      ...form,
+      costBreakdown: form.costBreakdown.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    });
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Precio unitario por costos</p>
+          <p className="text-xs text-muted-foreground">Costos, venta y precio unitario sin IGV.</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 rounded-xl text-xs font-bold"
+          onClick={() => onChange({ ...form, costBreakdown: [...form.costBreakdown, { ...EMPTY_COST_ROW }] })}
+        >
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Agregar costo
+        </Button>
+      </div>
+
+      {hasRows && (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {form.costBreakdown.map((row, index) => (
+              <div key={index} className="grid grid-cols-12 gap-2 rounded-xl bg-white p-2 border border-slate-200">
+                <div className="col-span-12 sm:col-span-2">
+                  <Select value={row.category} onValueChange={value => updateRow(index, { category: value })}>
+                    <SelectTrigger className="h-10 rounded-lg text-xs font-bold"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {COST_CATEGORIES.map(category => (
+                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  className="col-span-12 sm:col-span-4 h-10 rounded-lg text-sm"
+                  value={row.description}
+                  onChange={event => updateRow(index, { description: event.target.value })}
+                  placeholder="Recurso o actividad"
+                />
+                <Input
+                  className="col-span-4 sm:col-span-1 h-10 rounded-lg text-xs font-mono"
+                  value={row.unit}
+                  onChange={event => updateRow(index, { unit: event.target.value.toUpperCase() })}
+                  placeholder="Und."
+                />
+                <Input
+                  className="col-span-4 sm:col-span-1 h-10 rounded-lg text-xs font-mono"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={row.quantity}
+                  onChange={event => updateRow(index, { quantity: event.target.value })}
+                  placeholder="Cant."
+                />
+                <Input
+                  className="col-span-4 sm:col-span-2 h-10 rounded-lg text-xs font-mono"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={row.unitCost}
+                  onChange={event => updateRow(index, { unitCost: event.target.value })}
+                  placeholder="Costo"
+                />
+                <div className="col-span-9 sm:col-span-1 h-10 rounded-lg bg-slate-50 px-2 flex items-center justify-end text-xs font-mono font-bold">
+                  {formatMoney(costRowSubtotal(row))}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="col-span-3 sm:col-span-1 h-10 rounded-lg text-red-500"
+                  onClick={() => onChange({ ...form, costBreakdown: form.costBreakdown.filter((_, i) => i !== index) })}
+                  title="Eliminar costo"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 rounded-xl bg-white p-3 border border-slate-200">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Costo</p>
+              <p className="font-mono font-black">{currency} {formatMoney(summary.costTotal)}</p>
+            </div>
+            <div>
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rentabilidad %</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                className="mt-1 h-9 rounded-lg font-mono"
+                value={form.profitabilityPercentage}
+                onChange={event => onChange({ ...form, profitabilityPercentage: event.target.value })}
+              />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Venta</p>
+              <p className="font-mono font-black text-blue-700">{currency} {formatMoney(summary.saleTotal)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">P. Unitario</p>
+              <p className="font-mono font-black text-orange-600">{currency} {formatMoney(summary.unitPrice)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}) {
   const searchParams = useSearchParams();
@@ -126,7 +342,6 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
     contactId: '',
     tipo: '',
     generalExpensesPercentage: '',
-    profitMarginPercentage: '',
     deliveryTimeDays: '',
     warrantyText: '',
     manualTotalOverride: '',
@@ -163,6 +378,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
   const [companies, setCompanies] = useState<any[]>([]);
   const [metaContacts, setMetaContacts] = useState<any[]>([]);
   const [quotationTypes, setQuotationTypes] = useState<string[]>([]);
+  const [providerProducts, setProviderProducts] = useState<any[]>([]);
 
   // Document upload state
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -196,7 +412,21 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
     if (!token) return;
     api.get<any>('/companies?pageSize=200', token).then(r => setCompanies(r.data || [])).catch(() => {});
     api.get<any>('/config/quotation-types', token).then(r => setQuotationTypes(Array.isArray(r) ? r : [])).catch(() => {});
+    api.get<any[]>('/providers/products', token).then(r => setProviderProducts(Array.isArray(r) ? r : [])).catch(() => {});
   }, [token]);
+
+  const applyProviderProduct = (productId: string) => {
+    if (productId === '__manual__') return;
+    const product = providerProducts.find(p => p.id === productId);
+    if (!product) return;
+    setItemForm(f => ({
+      ...f,
+      description: product.name || f.description,
+      longDescription: product.description || `${product.providerName || 'Proveedor'}${product.description ? ` - ${product.description}` : ''}`,
+      unit: product.unit || f.unit,
+      unitPrice: String(product.unitPrice ?? f.unitPrice),
+    }));
+  };
 
   // Load contacts when companyId changes inside the edit meta dialog
   useEffect(() => {
@@ -212,8 +442,8 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
   /* ── Status ──────────────────────────────────────────────── */
   const updateStatus = async (status: string) => {
     try {
-      await api.patch(`/quotations/${id}/status`, { status }, token!);
-      addToast('Estado actualizado', 'success');
+      const res = await api.patch<any>(`/quotations/${id}/status`, { status }, token!);
+      addToast(res.project ? 'Estado actualizado y proyecto creado' : 'Estado actualizado', 'success');
       load();
     } catch (e: any) { addToast(e.message, 'error'); }
   };
@@ -244,25 +474,23 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
   };
 
   const addItem = async () => {
-    if (!itemForm.description.trim()) { addToast('La descripción es obligatoria', 'error'); return; }
+    if (!itemForm.description.trim()) { addToast('La descripcion es obligatoria', 'error'); return; }
     const qty = parseFloat(itemForm.quantity);
-    const price = parseFloat(itemForm.unitPrice);
+    const summary = priceSummary(itemForm);
+    const price = itemForm.costBreakdown.length > 0 ? summary.unitPrice : parseFloat(itemForm.unitPrice);
     if (isNaN(qty) || qty <= 0) { addToast('La cantidad debe ser mayor a 0', 'error'); return; }
+    if (itemForm.costBreakdown.length > 0 && !hasValidCostBreakdown(itemForm)) {
+      addToast('Completa al menos un costo con descripcion y cantidad', 'error');
+      return;
+    }
     if (isNaN(price) || price < 0) { addToast('El precio unitario no puede ser negativo', 'error'); return; }
     try {
-      await api.post(`/quotations/${id}/sections/${activeSectionId}/items`, {
-        description: itemForm.description.trim(),
-        unit: itemForm.unit,
-        quantity: qty,
-        unitPrice: price,
-        longDescription: itemForm.longDescription.trim() || undefined,
-      }, token!);
-      addToast('Ítem agregado', 'success');
+      await api.post(`/quotations/${id}/sections/${activeSectionId}/items`, serializeItemForm(itemForm), token!);
+      addToast('Item agregado', 'success');
       setItemDialog(false);
       load();
     } catch (e: any) { addToast(e.message, 'error'); }
   };
-
   const deleteItem = async (sectionId: string, itemId: string) => {
     try {
       await api.delete(`/quotations/${id}/sections/${sectionId}/items/${itemId}`, token!);
@@ -303,7 +531,6 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
       contactId: quotation.contactId || '',
       tipo: quotation.tipo || '',
       generalExpensesPercentage: String(quotation.generalExpensesPercentage ?? ''),
-      profitMarginPercentage: String(quotation.profitMarginPercentage ?? ''),
       deliveryTimeDays: String(quotation.deliveryTimeDays || ''),
       warrantyText: quotation.warrantyText || '',
       manualTotalOverride: quotation.manualTotalOverride != null ? String(quotation.manualTotalOverride) : '',
@@ -363,10 +590,6 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
       if (metaForm.generalExpensesPercentage !== '') {
         const gep = parseFloat(metaForm.generalExpensesPercentage);
         if (!isNaN(gep) && gep >= 0) body.generalExpensesPercentage = gep;
-      }
-      if (metaForm.profitMarginPercentage !== '') {
-        const pmp = parseFloat(metaForm.profitMarginPercentage);
-        if (!isNaN(pmp) && pmp >= 0) body.profitMarginPercentage = pmp;
       }
       if (metaForm.deliveryTimeDays !== '') {
         const dtd = parseInt(metaForm.deliveryTimeDays, 10);
@@ -440,32 +663,25 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
   const openEditItem = (sectionId: string, item: any) => {
     setEditingSectionId(sectionId);
     setEditingItem(item);
-    setEditItemForm({
-      description: item.description,
-      unit: item.unit,
-      quantity: String(item.quantity),
-      unitPrice: String(item.unitPrice),
-      longDescription: String(item.longDescription ?? ''),
-    });
+    setEditItemForm(hydrateItemForm(item));
     setEditItemDialog(true);
   };
 
   const saveEditItem = async () => {
     if (!editItemForm.description.trim()) { addToast('La descripción es obligatoria', 'error'); return; }
     const qty = parseFloat(editItemForm.quantity);
-    const price = parseFloat(editItemForm.unitPrice);
+    const summary = priceSummary(editItemForm);
+    const price = editItemForm.costBreakdown.length > 0 ? summary.unitPrice : parseFloat(editItemForm.unitPrice);
     if (isNaN(qty) || qty <= 0) { addToast('La cantidad debe ser mayor a 0', 'error'); return; }
+    if (editItemForm.costBreakdown.length > 0 && !hasValidCostBreakdown(editItemForm)) {
+      addToast('Completa al menos un costo con descripcion y cantidad', 'error');
+      return;
+    }
     if (isNaN(price) || price < 0) { addToast('El precio unitario no puede ser negativo', 'error'); return; }
     try {
       await api.patch(
         `/quotations/${id}/sections/${editingSectionId}/items/${editingItem.id}`,
-        {
-          description: editItemForm.description.trim(),
-          unit: editItemForm.unit,
-          quantity: qty,
-          unitPrice: price,
-          longDescription: editItemForm.longDescription.trim() || undefined,
-        },
+        serializeItemForm(editItemForm),
         token!
       );
       addToast('Ítem actualizado', 'success');
@@ -910,31 +1126,60 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                     </TableHeader>
                     <TableBody>
                       {(section.items || []).map((item: any) => (
-                        <TableRow key={item.id} className="group hover:bg-slate-50/50 dark:hover:bg-white/5 border-white/5">
-                          <TableCell className="font-medium pl-6 text-sm py-4">
-                            {item.description}
-                          </TableCell>
-                          <TableCell className="text-center text-muted-foreground font-mono text-xs">{item.unit}</TableCell>
-                          <TableCell className="text-right font-mono font-medium">{Number(item.quantity).toFixed(2)}</TableCell>
-                          <TableCell className="text-right font-mono text-slate-500">{Number(item.unitPrice).toFixed(2)}</TableCell>
-                          <TableCell className="text-right pr-6">
-                            <span className="font-mono font-bold text-sm bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
-                              {Number(item.subtotal ?? Number(item.quantity) * Number(item.unitPrice)).toFixed(2)}
-                            </span>
-                          </TableCell>
-                          {canEdit && (
-                            <TableCell className="text-right pr-6">
-                              <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => openEditItem(section.id, item)}>
-                                  <Pencil className="h-3 w-3 text-blue-500" />
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => deleteItem(section.id, item.id)}>
-                                  <Trash2 className="h-3 w-3 text-red-500" />
-                                </Button>
-                              </div>
+                        <Fragment key={item.id}>
+                          <TableRow className="group hover:bg-slate-50/50 dark:hover:bg-white/5 border-white/5">
+                            <TableCell className="font-medium pl-6 text-sm py-4">
+                              {item.description}
                             </TableCell>
+                            <TableCell className="text-center text-muted-foreground font-mono text-xs">{item.unit}</TableCell>
+                            <TableCell className="text-right font-mono font-medium">{Number(item.quantity).toFixed(2)}</TableCell>
+                            <TableCell className="text-right font-mono text-slate-500">{Number(item.unitPrice).toFixed(2)}</TableCell>
+                            <TableCell className="text-right pr-6">
+                              <span className="font-mono font-bold text-sm bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
+                                {Number(item.subtotal ?? Number(item.saleTotal ?? Number(item.quantity) * Number(item.unitPrice))).toFixed(2)}
+                              </span>
+                            </TableCell>
+                            {canEdit && (
+                              <TableCell className="text-right pr-6">
+                                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => openEditItem(section.id, item)}>
+                                    <Pencil className="h-3 w-3 text-blue-500" />
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => deleteItem(section.id, item.id)}>
+                                    <Trash2 className="h-3 w-3 text-red-500" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                          {Array.isArray(item.costBreakdown) && item.costBreakdown.length > 0 && (
+                            <TableRow className="bg-slate-50/70 dark:bg-slate-900/60 border-white/5">
+                              <TableCell colSpan={canEdit ? 6 : 5} className="px-6 py-3">
+                                <div className="space-y-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Costos del item sin IGV</span>
+                                    <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+                                      <span>Costo: {currency} {Number(item.costTotal || 0).toFixed(2)}</span>
+                                      <span>Rent.: {Number(item.profitabilityPercentage || 0).toFixed(2)}%</span>
+                                      <span className="font-bold text-blue-700">Venta: {currency} {Number(item.saleTotal ?? item.subtotal ?? 0).toFixed(2)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="grid gap-1">
+                                    {item.costBreakdown.map((row: any, rowIndex: number) => (
+                                      <div key={`${item.id}-cost-${rowIndex}`} className="grid grid-cols-12 gap-2 text-xs text-muted-foreground">
+                                        <span className="col-span-2 font-bold text-slate-600 dark:text-slate-300">{row.category}</span>
+                                        <span className="col-span-4">{row.description}</span>
+                                        <span className="col-span-2 text-right font-mono">{row.quantity} {row.unit}</span>
+                                        <span className="col-span-2 text-right font-mono">{currency} {Number(row.unitCost || 0).toFixed(2)}</span>
+                                        <span className="col-span-2 text-right font-mono font-bold">{currency} {Number(row.subtotal || 0).toFixed(2)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableRow>
+                        </Fragment>
                       ))}
                     </TableBody>
                   </Table>
@@ -1527,14 +1772,10 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                   <Input id="meta-igv" type="number" step="0.1" min="0" max="100" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.igvPercentage} onChange={e => setMetaForm(f => ({ ...f, igvPercentage: e.target.value }))} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="meta-gep" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Gastos Generales (%)</Label>
                   <Input id="meta-gep" type="number" step="0.1" min="0" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.generalExpensesPercentage} onChange={e => setMetaForm(f => ({ ...f, generalExpensesPercentage: e.target.value }))} placeholder="Ej: 10" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="meta-pmp" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Margen de Utilidad (%)</Label>
-                  <Input id="meta-pmp" type="number" step="0.1" min="0" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.profitMarginPercentage} onChange={e => setMetaForm(f => ({ ...f, profitMarginPercentage: e.target.value }))} placeholder="Ej: 15" />
                 </div>
               </div>
             </div>
@@ -1644,6 +1885,24 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
             </DialogTitle>
           </DialogHeader>
           <div className="p-6 space-y-5">
+            {providerProducts.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Producto de proveedor</Label>
+                <Select value="__manual__" onValueChange={applyProviderProduct}>
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200">
+                    <SelectValue placeholder="Buscar producto registrado..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__manual__">Carga manual</SelectItem>
+                    {providerProducts.map(product => (
+                      <SelectItem key={`${product.providerId}-${product.id}`} value={product.id}>
+                        {product.name} - {product.providerName} ({currency} {Number(product.unitPrice || 0).toFixed(2)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="sec-name" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Nombre del Grupo</Label>
               <Input id="sec-name" className="h-11 rounded-xl" value={sectionForm.name} onChange={e => setSectionForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Materiales Eléctricos" />
@@ -1662,7 +1921,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
 
       {/* Add item dialog */}
       <Dialog open={itemDialog} onOpenChange={setItemDialog}>
-        <DialogContent className="p-0 border-none shadow-2xl overflow-hidden max-w-lg font-jakarta">
+        <DialogContent className="p-0 border-none shadow-2xl overflow-hidden max-w-4xl font-jakarta">
           <DialogHeader className="p-6 bg-slate-900 text-white border-b border-white/10">
             <DialogTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
               <Package className="h-6 w-6 text-orange-500" />
@@ -1696,14 +1955,24 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="item-price" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">P. Unitario</Label>
-                <Input id="item-price" type="number" step="0.01" min="0" className="h-11 rounded-xl font-mono" value={itemForm.unitPrice} onChange={e => setItemForm(f => ({ ...f, unitPrice: e.target.value }))} />
+                <Input
+                  id="item-price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="h-11 rounded-xl font-mono"
+                  value={itemForm.costBreakdown.length > 0 ? priceSummary(itemForm).unitPrice.toFixed(2) : itemForm.unitPrice}
+                  readOnly={itemForm.costBreakdown.length > 0}
+                  onChange={e => setItemForm(f => ({ ...f, unitPrice: e.target.value }))}
+                />
               </div>
             </div>
-            {itemForm.quantity && itemForm.unitPrice && (
+            <CostBreakdownEditor form={itemForm} onChange={setItemForm} currency={currency} />
+            {itemForm.quantity && (itemForm.unitPrice || itemForm.costBreakdown.length > 0) && (
               <div className="flex items-center justify-between px-4 py-3 bg-orange-50 dark:bg-orange-950/20 rounded-2xl border border-orange-200/50">
                 <span className="text-xs font-bold text-orange-700 dark:text-orange-400 uppercase tracking-widest">Subtotal estimado</span>
                 <span className="font-mono font-black text-orange-700 dark:text-orange-400">
-                  {currency} {(parseFloat(itemForm.quantity || '0') * parseFloat(itemForm.unitPrice || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {currency} {priceSummary(itemForm).saleTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             )}
@@ -1717,7 +1986,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
 
       {/* Edit item dialog */}
       <Dialog open={editItemDialog} onOpenChange={setEditItemDialog}>
-        <DialogContent className="p-0 border-none shadow-2xl overflow-hidden max-w-lg font-jakarta">
+        <DialogContent className="p-0 border-none shadow-2xl overflow-hidden max-w-4xl font-jakarta">
           <DialogHeader className="p-6 bg-slate-900 text-white border-b border-white/10">
             <DialogTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
               <Pencil className="h-6 w-6 text-blue-500" />
@@ -1751,14 +2020,24 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-item-price" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">P. Unitario</Label>
-                <Input id="edit-item-price" type="number" step="0.01" min="0" className="h-11 rounded-xl font-mono" value={editItemForm.unitPrice} onChange={e => setEditItemForm(f => ({ ...f, unitPrice: e.target.value }))} />
+                <Input
+                  id="edit-item-price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="h-11 rounded-xl font-mono"
+                  value={editItemForm.costBreakdown.length > 0 ? priceSummary(editItemForm).unitPrice.toFixed(2) : editItemForm.unitPrice}
+                  readOnly={editItemForm.costBreakdown.length > 0}
+                  onChange={e => setEditItemForm(f => ({ ...f, unitPrice: e.target.value }))}
+                />
               </div>
             </div>
-            {editItemForm.quantity && editItemForm.unitPrice && (
+            <CostBreakdownEditor form={editItemForm} onChange={setEditItemForm} currency={currency} />
+            {editItemForm.quantity && (editItemForm.unitPrice || editItemForm.costBreakdown.length > 0) && (
               <div className="flex items-center justify-between px-4 py-3 bg-blue-50 dark:bg-blue-950/20 rounded-2xl border border-blue-200/50">
                 <span className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-widest">Subtotal estimado</span>
                 <span className="font-mono font-black text-blue-700 dark:text-blue-400">
-                  {currency} {(parseFloat(editItemForm.quantity || '0') * parseFloat(editItemForm.unitPrice || '0')).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {currency} {priceSummary(editItemForm).saleTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             )}
