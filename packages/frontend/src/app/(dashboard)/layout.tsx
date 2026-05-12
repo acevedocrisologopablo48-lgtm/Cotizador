@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { UserRole } from '@fym/shared';
 import {
   LayoutDashboard,
@@ -23,6 +24,8 @@ import {
   Shield,
   Camera,
   CalendarDays,
+  Bell,
+  CheckCircle2,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -31,6 +34,20 @@ type NavItem = {
   label: string;
   icon: LucideIcon;
   roles?: UserRole[];
+};
+
+type NotificationItem = {
+  id: string;
+  type?: string;
+  title?: string;
+  body?: string;
+  read?: boolean;
+  projectId?: string;
+  projectCode?: string;
+  projectName?: string;
+  assignedByName?: string;
+  assignedByInitials?: string;
+  createdAt?: string | { seconds?: number; _seconds?: number };
 };
 
 const navGroups: Array<{ title: string; items: NavItem[] }> = [
@@ -116,10 +133,11 @@ const navGroups: Array<{ title: string; items: NavItem[] }> = [
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, logout } = useAuth();
+  const { user, token, isLoading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
     if (!isLoading && !user) router.replace('/login');
@@ -132,6 +150,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [user, isLoading, pathname, router]);
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    if (!token || !user) {
+      setNotifications([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadNotifications = async () => {
+      try {
+        const res = await api.get<{ data: NotificationItem[] }>('/auth/notifications', token);
+        if (!cancelled) setNotifications(res.data || []);
+      } catch {
+        if (!cancelled) setNotifications([]);
+      }
+    };
+
+    void loadNotifications();
+    const interval = window.setInterval(loadNotifications, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [token, user]);
 
   if (isLoading || !user) {
     return (
@@ -153,6 +195,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     .slice(0, 2)
     .join('')
     .toUpperCase() || '?';
+
+  const pendingNotifications = notifications.filter((notification) => !notification.read).slice(0, 4);
+
+  const notificationDate = (value: NotificationItem['createdAt']) => {
+    if (!value) return '';
+    if (typeof value === 'string') return new Date(value).toLocaleDateString('es-PE');
+    const seconds = value.seconds ?? value._seconds;
+    return seconds ? new Date(seconds * 1000).toLocaleDateString('es-PE') : '';
+  };
+
+  const markNotificationRead = async (notification: NotificationItem, navigate = false) => {
+    if (!token) return;
+    setNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read: true } : item));
+    try {
+      await api.put(`/auth/notifications/${notification.id}/read`, {}, token);
+    } catch {
+      setNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read: notification.read } : item));
+    }
+    if (navigate && notification.projectId) {
+      router.push(`/projects/detail?id=${notification.projectId}`);
+    }
+  };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full select-none font-jakarta">
@@ -222,6 +286,53 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* User */}
       <div className="shrink-0 p-4 border-t border-border/50 bg-muted/30">
+        {pendingNotifications.length > 0 && (
+          <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 shadow-sm">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                  <Bell className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-amber-800">Tareas pendientes</p>
+                  <p className="text-[10px] font-semibold text-amber-700">{pendingNotifications.length} sin revisar</p>
+                </div>
+              </div>
+            </div>
+            <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+              {pendingNotifications.map((notification) => (
+                <div key={notification.id} className="rounded-xl border border-amber-200 bg-white p-2.5">
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => markNotificationRead(notification, true)}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-[10px] font-black text-white">
+                        {notification.assignedByInitials || 'ZA'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12px] font-black text-slate-800">{notification.title || 'Notificacion'}</p>
+                        <p className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-4 text-slate-600">{notification.body || 'Tienes una novedad pendiente.'}</p>
+                        <p className="mt-1 text-[10px] font-bold text-slate-400">
+                          {notification.projectCode || notification.projectName || notificationDate(notification.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => markNotificationRead(notification)}
+                    className="mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-50"
+                  >
+                    <CheckCircle2 className="h-3 w-3" />
+                    Marcar leida
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="group/user flex items-center gap-3 rounded-2xl p-2.5 bg-muted/40 border border-border/40 transition-all hover:bg-muted/60">
           <div className="relative">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-indigo-600 text-white text-xs font-black shadow-lg">

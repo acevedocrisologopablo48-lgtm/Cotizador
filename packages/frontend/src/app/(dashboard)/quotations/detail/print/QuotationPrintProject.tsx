@@ -31,7 +31,13 @@ export function QuotationPrintProject({
   const ct = quotation.commercialTerms && typeof quotation.commercialTerms === 'object' ? quotation.commercialTerms : {};
   const showTax = quotation.showTaxBreakdown !== false;
   const includeIgv = quotation.pricesIncludeIgv === true;
-  const draft = quotation.status === 'DRAFT' || quotation.status === 'REVIEW';
+  const signer = quotation.creator || {};
+  const signatureUrl = signer.signatureUrl || signer.digitalSignatureUrl || companySettings?.signatureUrl;
+  const signerName = signer.fullName || companySettings?.legalRepresentative || companySettings?.name;
+  const signerRole = signer.roleLabel || signer.role || companySettings?.legalRepresentativeRole || 'Representante';
+  const directSubtotal = Number(quotation.directSubtotal ?? quotation.subtotalBeforeDiscount ?? quotation.subtotal ?? 0);
+  const generalExpensesAmount = Number(quotation.generalExpensesAmount || 0);
+  const commercialDiscountAmount = Number(quotation.commercialDiscountAmount || 0);
 
   const taxNote = showTax
     ? includeIgv
@@ -43,24 +49,6 @@ export function QuotationPrintProject({
 
   return (
     <div className="hidden print:block font-sans bg-white text-black">
-      {draft && (
-        <div
-          className="pointer-events-none select-none print:block"
-          style={{
-            position: 'fixed',
-            top: '36%',
-            left: '16%',
-            transform: 'rotate(-24deg)',
-            fontSize: '48pt',
-            color: 'rgba(148,163,184,0.12)',
-            fontWeight: 900,
-            zIndex: 50,
-          }}
-        >
-          BORRADOR
-        </div>
-      )}
-
       {/* Portada */}
       <div className="min-h-[280mm] flex flex-col break-after-page">
         <div className="bg-[#1e3a5f] text-white px-6 py-4 flex justify-between items-center">
@@ -179,6 +167,24 @@ export function QuotationPrintProject({
 
         <div className="flex justify-end mb-8">
           <div className="w-72 border border-slate-200 rounded overflow-hidden">
+            {directSubtotal > 0 && (generalExpensesAmount > 0 || commercialDiscountAmount > 0) && (
+              <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
+                <span className="text-slate-600 font-bold text-[8.5pt] uppercase">Costo directo</span>
+                <span className="font-mono font-bold">{fmt(directSubtotal)}</span>
+              </div>
+            )}
+            {generalExpensesAmount > 0 && (
+              <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
+                <span className="text-slate-600 font-bold text-[8.5pt] uppercase">Gastos + utilidad ({quotation.generalExpensesPercentage ?? 0}%)</span>
+                <span className="font-mono font-bold">{fmt(generalExpensesAmount)}</span>
+              </div>
+            )}
+            {commercialDiscountAmount > 0 && (
+              <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
+                <span className="text-slate-600 font-bold text-[8.5pt] uppercase">Descuento comercial ({quotation.commercialDiscountPercentage ?? 0}%)</span>
+                <span className="font-mono font-bold">-{fmt(commercialDiscountAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
               <span className="text-slate-600 font-bold text-[8.5pt] uppercase">Subtotal</span>
               <span className="font-mono font-bold">{fmt(quotation.subtotal || 0)}</span>
@@ -240,12 +246,12 @@ export function QuotationPrintProject({
             </div>
           )}
           <div className="flex flex-col items-center justify-end">
-            {companySettings?.signatureUrl && (
-              <img src={companySettings.signatureUrl} alt="Firma" className="max-h-[72px] object-contain mb-2" />
+            {signatureUrl && (
+              <img src={signatureUrl} alt="Firma" className="max-h-[72px] object-contain mb-2" />
             )}
             <div className="w-4/5 border-t border-slate-400 pt-2 text-center">
-              <p className="text-[9pt] font-extrabold m-0">{companySettings?.legalRepresentative || companySettings?.name}</p>
-              <p className="text-[7.5pt] text-slate-500 m-0 mt-1">{companySettings?.legalRepresentativeRole || 'Representante'}</p>
+              <p className="text-[9pt] font-extrabold m-0">{signerName}</p>
+              <p className="text-[7.5pt] text-slate-500 m-0 mt-1">{signerRole}</p>
             </div>
           </div>
         </div>

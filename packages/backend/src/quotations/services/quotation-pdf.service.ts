@@ -15,7 +15,7 @@ export class QuotationPdfService {
 
   async generatePdfBuffer(quotationId: string, preloaded?: any): Promise<Buffer> {
     const quotation = preloaded ?? (await this.quotations.findOne(quotationId));
-    const company = await this.getPdfCompanySettings();
+    const company = await this.getPdfCompanySettings(quotation);
     const html = renderQuotationPrintHtml(quotation, company);
 
     let puppeteerLib: typeof import('puppeteer');
@@ -75,13 +75,21 @@ export class QuotationPdfService {
     return candidates.find((candidate) => existsSync(candidate));
   }
 
-  private async getPdfCompanySettings(): Promise<any> {
+  private async getPdfCompanySettings(quotation?: any): Promise<any> {
     const company = await this.config.getCompanySettings();
+    const creator = quotation?.creator || {};
+    const creatorSignature = creator.signatureUrl || creator.digitalSignatureUrl || creator.firmaUrl || '';
     const [logoUrl, signatureUrl] = await Promise.all([
       this.toEmbeddedImage(company.logoUrl, 'logo'),
-      this.toEmbeddedImage(company.signatureUrl, 'firma'),
+      this.toEmbeddedImage(creatorSignature || company.signatureUrl, 'firma'),
     ]);
-    return { ...company, logoUrl, signatureUrl };
+    return {
+      ...company,
+      logoUrl,
+      signatureUrl,
+      legalRepresentative: creator.fullName || company.legalRepresentative,
+      legalRepresentativeRole: creator.roleLabel || creator.role || company.legalRepresentativeRole,
+    };
   }
 
   private async toEmbeddedImage(value: unknown, label: string): Promise<string> {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { TimesheetFilterDto } from '../dto/timesheet-filter.dto';
@@ -62,7 +62,27 @@ export class TimesheetsService {
       ts.employee = empCache[ts.employeeId] ?? null;
     }
 
+    await this.attachAttendanceEvidence(timesheets);
+
     return timesheets;
+  }
+
+  private async attachAttendanceEvidence(timesheets: any[]) {
+    const attendanceIds = Array.from(new Set(
+      timesheets.flatMap((ts) => [ts.checkInId, ts.checkOutId].filter(Boolean)),
+    ));
+    if (attendanceIds.length === 0) return;
+
+    const refs = attendanceIds.map((id) => this.firebase.db.collection('attendances').doc(id));
+    const docs = await this.firebase.db.getAll(...refs);
+    const attendanceMap = new Map(
+      docs.filter((doc) => doc.exists).map((doc) => [doc.id, this.firebase.docToObj(doc) as any]),
+    );
+
+    for (const ts of timesheets) {
+      ts.checkInAttendance = ts.checkInId ? attendanceMap.get(ts.checkInId) || null : null;
+      ts.checkOutAttendance = ts.checkOutId ? attendanceMap.get(ts.checkOutId) || null : null;
+    }
   }
 
   /** Aggregate summary grouped by employee */
@@ -86,8 +106,8 @@ export class TimesheetsService {
 
       byEmployee[empId].records.push(ts);
 
-      if (ts.status === 'PRESENT') {
-        byEmployee[empId].daysPresent += 1;
+      if (ts.status === 'PRESENT' || Number(ts.paidDays || 0) > 0) {
+        byEmployee[empId].daysPresent += Number(ts.paidDays || 1);
         byEmployee[empId].totalHours =
           Math.round((byEmployee[empId].totalHours + (ts.hoursWorked ?? 0)) * 100) / 100;
       } else if (ts.status === 'INCOMPLETE') {
@@ -98,6 +118,80 @@ export class TimesheetsService {
     }
 
     return Object.values(byEmployee);
+  }
+
+  async requestPermission(data: any, userId: string) {
+    const employeeId = String(data.employeeId || '').trim();
+    const date = String(data.date || '').trim();
+    const reason = String(data.reason || '').trim();
+    if (!employeeId || !date || !reason) {
+      throw new BadRequestException('Empleado, fecha y motivo son obligatorios');
+    }
+
+    const employeeDoc = await this.firebase.db.collection('employees').doc(employeeId).get();
+    if (!employeeDoc.exists) throw new NotFoundException('Empleado no encontrado');
+
+    const existing = await this.col.where('employeeId', '==', employeeId).where('date', '==', date).limit(1).get();
+    const now = new Date();
+    const payload = {
+      employeeId,
+      date,
+      month: date.slice(0, 7),
+      week: this.getISOWeek(date),
+      checkInId: null,
+      checkOutId: null,
+      checkInTime: null,
+      checkOutTime: null,
+      hoursWorked: 0,
+      regularHours: 0,
+      overtimeHours: 0,
+      paidDays: 0,
+      status: 'ABSENT',
+      permissionStatus: 'PENDING',
+      permissionReason: reason,
+      permissionRequestedBy: userId,
+      permissionRequestedAt: now,
+      updatedAt: now,
+    };
+
+    if (existing.empty) {
+      const id = this.firebase.generateId();
+      await this.col.doc(id).set({ ...payload, createdAt: now });
+      return { id, ...payload };
+    }
+
+    const id = existing.docs[0].id;
+    await this.col.doc(id).update(payload);
+    return { id, ...existing.docs[0].data(), ...payload };
+  }
+
+  async resolvePermission(id: string, data: any, userId: string) {
+    const status = String(data.status || '').toUpperCase();
+    if (!['APPROVED', 'DENIED'].includes(status)) {
+      throw new BadRequestException('Estado de permiso invalido');
+    }
+    const doc = await this.col.doc(id).get();
+    if (!doc.exists) throw new NotFoundException('Tareo no encontrado');
+    const now = new Date();
+    const updateData = {
+      permissionStatus: status,
+      permissionResolvedBy: userId,
+      permissionResolvedAt: now,
+      paidDays: status === 'APPROVED' ? 1 : 0,
+      status: 'ABSENT',
+      updatedAt: now,
+    };
+    await this.col.doc(id).update(updateData);
+    return { id, ...doc.data(), ...updateData };
+  }
+
+  private getISOWeek(dateStr: string): string {
+    const d = new Date(dateStr + 'T12:00:00Z');
+    const thu = new Date(d);
+    thu.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(thu.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((thu.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${thu.getUTCFullYear()}-W${week.toString().padStart(2, '0')}`;
   }
 
   /**
@@ -152,7 +246,7 @@ export class TimesheetsService {
         checkIn:  checkIn  ? checkIn.toLocaleTimeString('es-PE',  { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Lima' }) : '-',
         checkOut: checkOut ? checkOut.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Lima' }) : '-',
         hours:  ts.hoursWorked != null ? Number(ts.hoursWorked.toFixed(2)) : '-',
-        status: STATUS_LABELS[ts.status] ?? ts.status ?? '-',
+        status: ts.permissionStatus === 'APPROVED' ? 'Permiso pagado' : STATUS_LABELS[ts.status] ?? ts.status ?? '-',
       });
 
       // Alternating row color

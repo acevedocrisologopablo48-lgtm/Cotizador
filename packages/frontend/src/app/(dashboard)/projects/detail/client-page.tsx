@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Badge } from '@/components/ui/badge';
+import { ProjectManagementModule } from './components/ProjectManagementModule';
 
 const MATERIAL_TYPES = [
   { value: 'TOOL', label: 'Herramienta' },
@@ -498,6 +499,10 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
             <FileText className="mr-2 h-4 w-4" />
             Archivos
           </TabsTrigger>}
+          {!isClient && <TabsTrigger value="tasks" className="rounded-md data-[state=active]:bg-primary data-[state=active]:text-white">
+            <ClipboardList className="mr-2 h-4 w-4" />
+            Tareas
+          </TabsTrigger>}
         </TabsList>
 
         <TabsContent value="progress" className="mt-0">
@@ -755,6 +760,20 @@ export default function ProjectDetailPage({ id: idProp }: { id?: string } = {}) 
             </CardContent>
           </Card>
         </TabsContent>
+
+        {!isClient && (
+          <TabsContent value="tasks" className="mt-0">
+            <Card className="rounded-lg border-slate-200">
+              <CardHeader>
+                <CardTitle>Gestion de tareas del proyecto</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">Asignacion de responsables, tablero Kanban, cronograma e historial de actividad.</p>
+              </CardHeader>
+              <CardContent>
+                <ProjectManagementModule projectId={id!} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>

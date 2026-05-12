@@ -41,10 +41,10 @@ function statusLabel(status: string): string {
     DRAFT: 'Borrador',
     REVIEW: 'En revisión',
     SENT: 'Enviada',
-    APPROVED: 'Aceptada',
-    REJECTED: 'Rechazada',
+    APPROVED: 'Aprobado',
+    REJECTED: 'Denegado',
     EXPIRED: 'Vencida',
-    INVOICED: 'Facturada',
+    INVOICED: 'Aprobado',
     FOLLOW_UP: 'Seguimiento',
     STAND_BY: 'Stand By',
   };
@@ -74,10 +74,6 @@ const BASE_STYLES = `
   .muted { color: #64748b; font-size: 9pt; }
   .brand-bar { background: #1e3a5f; color: #fff; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; }
   .brand-bar small { opacity: 0.85; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.06em; }
-  .draft-watermark {
-    position: fixed; top: 40%; left: 15%; transform: rotate(-28deg); font-size: 48pt; color: rgba(148,163,184,0.2);
-    font-weight: 900; z-index: 0; pointer-events: none;
-  }
   .page { padding: 14mm 16mm; position: relative; z-index: 1; }
   h1 { font-size: 16pt; margin: 0 0 8px; color: #1e3a5f; }
   h2 { font-size: 11pt; margin: 18px 0 8px; color: #1e3a5f; border-bottom: 2px solid #ea580c; padding-bottom: 4px; }
@@ -163,6 +159,11 @@ function totalsHtml(quotation: any): string {
   const cur = quotation.currency || 'PEN';
   const show = quotation.showTaxBreakdown !== false;
   const include = quotation.pricesIncludeIgv === true;
+  const directSubtotal = Number(quotation.directSubtotal ?? quotation.subtotalBeforeDiscount ?? quotation.subtotal ?? 0);
+  const generalExpensesAmount = Number(quotation.generalExpensesAmount || 0);
+  const generalExpensesPercentage = Number(quotation.generalExpensesPercentage || 0);
+  const commercialDiscountAmount = Number(quotation.commercialDiscountAmount || 0);
+  const commercialDiscountPercentage = Number(quotation.commercialDiscountPercentage || 0);
   let taxNote = '';
   if (show) {
     taxNote = include
@@ -171,9 +172,21 @@ function totalsHtml(quotation: any): string {
   } else {
     taxNote = 'Total conforme a la propuesta.';
   }
-  const parts: string[] = [
-    `<div class="totals-row"><span>Subtotal operativo</span><span>${fmtMoney(quotation.subtotal || 0, cur)}</span></div>`,
-  ];
+  const parts: string[] = [];
+  if (directSubtotal > 0 && (generalExpensesAmount > 0 || commercialDiscountAmount > 0)) {
+    parts.push(`<div class="totals-row"><span>Costo directo</span><span>${fmtMoney(directSubtotal, cur)}</span></div>`);
+  }
+  if (generalExpensesAmount > 0) {
+    parts.push(
+      `<div class="totals-row"><span>Gastos + utilidad (${generalExpensesPercentage}%)</span><span>${fmtMoney(generalExpensesAmount, cur)}</span></div>`,
+    );
+  }
+  if (commercialDiscountAmount > 0) {
+    parts.push(
+      `<div class="totals-row"><span>Descuento comercial (${commercialDiscountPercentage}%)</span><span>-${fmtMoney(commercialDiscountAmount, cur)}</span></div>`,
+    );
+  }
+  parts.push(`<div class="totals-row"><span>Subtotal operativo</span><span>${fmtMoney(quotation.subtotal || 0, cur)}</span></div>`);
   if (show) {
     parts.push(
       `<div class="totals-row"><span>IGV (${Number(quotation.igvPercentage ?? 18)}%)</span><span>${fmtMoney(quotation.igv ?? quotation.igvAmount ?? 0, cur)}</span></div>`,
@@ -216,7 +229,6 @@ function bankAndFooterHtml(company: QuotationPrintCompanySettings): string {
 
 export function renderQuotationPrintHtml(quotation: any, company: QuotationPrintCompanySettings): string {
   const mode = normalizeQuotationDocumentMode(quotation.documentMode);
-  const draft = quotation.status === 'DRAFT' || quotation.status === 'REVIEW';
   const qNum = String(quotation.quotationNumber || '');
   const rev = quotation.revisionLabel ? ` (${escapeHtml(quotation.revisionLabel)})` : '';
   const place = quotation.issuePlace?.trim() || company.address || 'Lima';
@@ -259,7 +271,6 @@ export function renderQuotationPrintHtml(quotation: any, company: QuotationPrint
 
     const body = `
       <div class="page">
-        ${draft ? '<div class="draft-watermark">BORRADOR</div>' : ''}
         <div class="brand-bar" style="margin-bottom:12px;">
           <div><strong>PROPUESTA Nº ${escapeHtml(qNum)}${rev}</strong><br/><small>${escapeHtml(quotation.title || '')}</small></div>
           <small>${escapeHtml(when)}</small>
@@ -283,7 +294,6 @@ export function renderQuotationPrintHtml(quotation: any, company: QuotationPrint
   // SIMPLE
   const simple = `
     <div class="page">
-      ${draft ? '<div class="draft-watermark">BORRADOR</div>' : ''}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
         <div>
           <p style="margin:0;font-size:10pt">${escapeHtml(place)}, ${escapeHtml(when)}</p>

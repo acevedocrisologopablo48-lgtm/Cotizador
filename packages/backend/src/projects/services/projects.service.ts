@@ -231,7 +231,8 @@ export class ProjectsService {
 
       if (!qDoc.exists) throw new NotFoundException('Cotización no encontrada');
       const quotation = qDoc.data()!;
-      if (quotation.status !== 'APPROVED' && quotation.status !== 'SENT') {
+      if (quotation.status !== 'APPROVED') {
+        throw new BadRequestException('La cotizacion debe estar aprobada');
         throw new BadRequestException('La cotización debe estar aprobada o enviada');
       }
       if (!existingSnap.empty) {

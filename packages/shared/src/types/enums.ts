@@ -21,14 +21,14 @@ export enum QuotationStatus {
 }
 
 export const QUOTATION_STATUS_TRANSITIONS: Record<QuotationStatus, QuotationStatus[]> = {
-  [QuotationStatus.DRAFT]: [QuotationStatus.REVIEW, QuotationStatus.SENT, QuotationStatus.APPROVED],
-  [QuotationStatus.REVIEW]: [QuotationStatus.DRAFT, QuotationStatus.SENT, QuotationStatus.APPROVED],
+  [QuotationStatus.DRAFT]: [QuotationStatus.REVIEW, QuotationStatus.APPROVED, QuotationStatus.REJECTED],
+  [QuotationStatus.REVIEW]: [QuotationStatus.DRAFT, QuotationStatus.APPROVED, QuotationStatus.REJECTED],
   [QuotationStatus.SENT]: [QuotationStatus.APPROVED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED, QuotationStatus.FOLLOW_UP, QuotationStatus.STAND_BY],
   [QuotationStatus.FOLLOW_UP]: [QuotationStatus.APPROVED, QuotationStatus.REJECTED, QuotationStatus.STAND_BY, QuotationStatus.SENT],
   [QuotationStatus.STAND_BY]: [QuotationStatus.FOLLOW_UP, QuotationStatus.SENT, QuotationStatus.APPROVED, QuotationStatus.REJECTED],
-  [QuotationStatus.APPROVED]: [QuotationStatus.INVOICED],
-  [QuotationStatus.REJECTED]: [QuotationStatus.DRAFT, QuotationStatus.FOLLOW_UP],
-  [QuotationStatus.EXPIRED]: [QuotationStatus.DRAFT, QuotationStatus.FOLLOW_UP],
+  [QuotationStatus.APPROVED]: [],
+  [QuotationStatus.REJECTED]: [QuotationStatus.DRAFT],
+  [QuotationStatus.EXPIRED]: [QuotationStatus.DRAFT],
   [QuotationStatus.INVOICED]: [],
 };
 

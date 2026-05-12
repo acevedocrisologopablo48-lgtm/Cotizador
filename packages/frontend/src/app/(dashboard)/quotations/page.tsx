@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 
 type ToneKey = 'primary' | 'slate' | 'amber' | 'sky' | 'indigo' | 'emerald' | 'rose';
 
-const STATUS_LABELS: Record<string, { label: string; color: ToneKey }> = {
+const LEGACY_STATUS_LABELS: Record<string, { label: string; color: ToneKey }> = {
   DRAFT: { label: 'Borrador', color: 'slate' },
   REVIEW: { label: 'En Revisión', color: 'amber' },
   APPROVED: { label: 'Aceptada', color: 'sky' },
@@ -28,6 +28,21 @@ const STATUS_LABELS: Record<string, { label: string; color: ToneKey }> = {
   REJECTED: { label: 'Rechazada', color: 'rose' },
   EXPIRED: { label: 'Expirada', color: 'rose' },
 };
+void LEGACY_STATUS_LABELS;
+
+const STATUS_LABELS: Record<string, { label: string; color: ToneKey }> = {
+  DRAFT: { label: 'Borrador', color: 'slate' },
+  REVIEW: { label: 'En Revision', color: 'amber' },
+  APPROVED: { label: 'Aprobado', color: 'emerald' },
+  SENT: { label: 'En Revision', color: 'amber' },
+  FOLLOW_UP: { label: 'En Revision', color: 'amber' },
+  STAND_BY: { label: 'En Revision', color: 'amber' },
+  INVOICED: { label: 'Aprobado', color: 'emerald' },
+  REJECTED: { label: 'Denegado', color: 'rose' },
+  EXPIRED: { label: 'Denegado', color: 'rose' },
+};
+
+const CONTROL_STATUS_OPTIONS = ['DRAFT', 'REVIEW', 'APPROVED', 'REJECTED'];
 
 const STATUS_TONE_CLASSES: Record<ToneKey, { wrapper: string; pingBg: string; dotBg: string; text: string }> = {
   primary: {
@@ -352,9 +367,12 @@ function QuotationsPageInner() {
                     </SelectTrigger>
                     <SelectContent className="bg-slate-900/95 backdrop-blur-xl border-white/10 text-white rounded-2xl p-2">
                       <SelectItem value="ALL" className="rounded-xl focus:bg-primary/20">TODOS LOS ESTADOS</SelectItem>
-                      {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                      {CONTROL_STATUS_OPTIONS.map((k) => {
+                        const v = STATUS_LABELS[k];
+                        return (
                         <SelectItem key={k} value={k} className="text-[10px] font-black uppercase tracking-widest rounded-xl focus:bg-primary/20">{v.label}</SelectItem>
-                      ))}
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -519,7 +537,7 @@ function QuotationsPageInner() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
-                            {q.status !== 'APPROVED' && q.status !== 'INVOICED' && (
+                            {!['APPROVED', 'INVOICED', 'REJECTED', 'EXPIRED'].includes(q.status) && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); approveQuotation(q); }}
                                 disabled={approvingId === q.id}

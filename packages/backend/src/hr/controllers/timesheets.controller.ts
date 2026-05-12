@@ -1,9 +1,14 @@
 import {
   Controller,
   Get,
+  Patch,
+  Post,
+  Body,
+  Param,
   Query,
   Res,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces } from '@nestjs/swagger';
@@ -32,6 +37,22 @@ export class TimesheetsController {
   @ApiOperation({ summary: 'Resumen consolidado de tareos agrupado por empleado' })
   async getSummary(@Query() filters: TimesheetFilterDto) {
     const data = await this.service.getSummary(filters);
+    return { data };
+  }
+
+  @Post('permissions')
+  @Roles('ADMIN', 'MANAGER', 'FIELD_SUPERVISOR', 'ENGINEER')
+  @ApiOperation({ summary: 'Registrar solicitud de permiso por ausencia' })
+  async requestPermission(@Body() dto: any, @Request() req: any) {
+    const data = await this.service.requestPermission(dto, req.user.id);
+    return { data };
+  }
+
+  @Patch(':id/permission')
+  @Roles('ADMIN', 'MANAGER')
+  @ApiOperation({ summary: 'Aprobar o denegar permiso de ausencia' })
+  async resolvePermission(@Param('id') id: string, @Body() dto: any, @Request() req: any) {
+    const data = await this.service.resolvePermission(id, dto, req.user.id);
     return { data };
   }
 

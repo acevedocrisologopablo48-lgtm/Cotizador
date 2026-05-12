@@ -9,13 +9,13 @@ export class ProjectMaterialsController {
   constructor(private readonly materialsService: ProjectMaterialsService) {}
 
   @Get()
-  @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR', 'ACCOUNTANT', 'VIEWER')
+  @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'ACCOUNTANT', 'VIEWER')
   findByProject(@Param('projectId') projectId: string) {
     return this.materialsService.findByProject(projectId);
   }
 
   @Post()
-  @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR')
+  @Roles('ADMIN', 'MANAGER', 'ENGINEER')
   create(@Param('projectId') projectId: string, @Body() dto: any, @CurrentUser() user: any) {
     return this.materialsService.create(projectId, dto, user.id);
   }
@@ -32,7 +32,7 @@ export class ProjectMaterialsController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'MANAGER', 'ENGINEER', 'FIELD_SUPERVISOR')
+  @Roles('ADMIN', 'MANAGER', 'ENGINEER')
   remove(@Param('projectId') projectId: string, @Param('id') id: string) {
     return this.materialsService.deleteRequest(projectId, id);
   }

@@ -19,6 +19,34 @@ import {
   type TechnicalSection,
 } from '@fym/shared';
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: 'Efectivo',
+  TRANSFER: 'Transferencia',
+  CHECK: 'Cheque',
+  LETTER_OF_CREDIT: 'Carta de crédito',
+};
+
+function agreementToCommercialTerms(agreement: any, company?: any) {
+  const creditDays = Number(agreement?.creditDays ?? 0);
+  const warrantyDays = Number(agreement?.warrantyDays ?? 0);
+  const method = String(agreement?.paymentMethod || '').trim();
+  const paymentTerms =
+    String(agreement?.paymentTerms || '').trim() ||
+    (creditDays > 0 ? `Crédito a ${creditDays} días` : 'Pago al contado');
+  const additionalNotes = [
+    warrantyDays > 0 ? `Garantía exigida: ${warrantyDays} días.` : '',
+    String(agreement?.specialConditions || '').trim(),
+  ].filter(Boolean).join('\n');
+
+  return {
+    paymentMethod: PAYMENT_METHOD_LABELS[method] || method,
+    paymentTerms,
+    executionLocation: String(agreement?.executionLocation || company?.address || '').trim(),
+    executionTime: String(agreement?.executionTime || '').trim(),
+    additionalNotes,
+  };
+}
+
 export default function NewQuotationPage() {
   const { token, user } = useAuth();
   const { addToast } = useToast();
@@ -32,7 +60,7 @@ export default function NewQuotationPage() {
     companyId: '', contactId: '', agreementId: '', tipo: '',
     title: '', description: '',
     validityDays: '15', currency: 'PEN', igvPercentage: '18',
-    generalExpensesPercentage: '10', profitMarginPercentage: '0',
+    generalExpensesPercentage: '13', commercialDiscountPercentage: '0', profitMarginPercentage: '0',
     introductionText: '', termsAndConditions: '', deliveryTimeDays: '', warrantyText: '',
     documentMode: 'SIMPLE' as 'SIMPLE' | 'PROJECT',
     referenceSubject: '',
@@ -80,15 +108,19 @@ export default function NewQuotationPage() {
     if (form.companyId && token) {
       api.get<any>(`/companies/${form.companyId}`, token)
         .then(r => {
-          setContacts(r.data?.contacts || []);
-          setAgreements(r.data?.agreements || []);
-          // Auto-suggest the SLA subject. The backend appends the official correlativo.
-          const tradeName: string = r.data?.tradeName || '';
-          if (tradeName) {
-            const now = new Date();
-            const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-            const suggestion = `SLA - ${tradeName} - ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
-            setForm(f => ({ ...f, title: f.title.trim() === '' ? suggestion : f.title }));
+          const company = r.data || {};
+          const nextAgreements = company.agreements || [];
+          const defaultAgreement = nextAgreements.find((a: any) => a.isActive !== false) || nextAgreements[0];
+          setContacts(company.contacts || []);
+          setAgreements(nextAgreements);
+          if (defaultAgreement) {
+            setForm(f => ({
+              ...f,
+              agreementId: defaultAgreement.id,
+              currency: defaultAgreement.billingCurrency || f.currency,
+              warrantyText: defaultAgreement.warrantyDays ? `Garantía por ${defaultAgreement.warrantyDays} días.` : f.warrantyText,
+              commercialTerms: agreementToCommercialTerms(defaultAgreement, company),
+            }));
           }
         })
         .catch(() => { setContacts([]); setAgreements([]); });
@@ -113,6 +145,7 @@ export default function NewQuotationPage() {
         currency: form.currency,
         igvPercentage: parseFloat(form.igvPercentage) || 18,
         generalExpensesPercentage: parseFloat(form.generalExpensesPercentage),
+        commercialDiscountPercentage: parseFloat(form.commercialDiscountPercentage) || 0,
         profitMarginPercentage: 0,
       };
       if (form.tipo) body.tipo = form.tipo;
@@ -232,7 +265,22 @@ export default function NewQuotationPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Seleccionar Cliente *</Label>
-                  <Select value={form.companyId} onValueChange={v => setForm(f => ({ ...f, companyId: v, contactId: '', agreementId: '' }))}>
+                  <Select
+                    value={form.companyId}
+                    onValueChange={v => setForm(f => ({
+                      ...f,
+                      companyId: v,
+                      contactId: '',
+                      agreementId: '',
+                      commercialTerms: {
+                        paymentMethod: '',
+                        paymentTerms: '',
+                        executionLocation: '',
+                        executionTime: '',
+                        additionalNotes: '',
+                      },
+                    }))}
+                  >
                     <SelectTrigger className="form-select h-11">
                       <SelectValue placeholder="Buscar empresa..." />
                     </SelectTrigger>
@@ -273,7 +321,25 @@ export default function NewQuotationPage() {
               {agreements.length > 0 && (
                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Acuerdo Comercial Vigente</Label>
-                  <Select value={form.agreementId} onValueChange={v => setForm(f => ({ ...f, agreementId: v === '_none' ? '' : v }))}>
+                  <Select
+                    value={form.agreementId}
+                    onValueChange={v => {
+                      if (v === '_none') {
+                        setForm(f => ({ ...f, agreementId: '' }));
+                        return;
+                      }
+                      const selected = agreements.find(a => a.id === v);
+                      setForm(f => ({
+                        ...f,
+                        agreementId: v,
+                        currency: selected?.billingCurrency || f.currency,
+                        warrantyText: selected?.warrantyDays ? `Garantía por ${selected.warrantyDays} días.` : f.warrantyText,
+                        commercialTerms: selected
+                          ? agreementToCommercialTerms(selected, companies.find(c => c.id === f.companyId))
+                          : f.commercialTerms,
+                      }));
+                    }}
+                  >
                     <SelectTrigger className="form-select h-11 border-indigo-200 bg-indigo-50/30">
                       <SelectValue placeholder="Vincular con un acuerdo previo" />
                     </SelectTrigger>
@@ -290,15 +356,15 @@ export default function NewQuotationPage() {
               )}
 
               <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Asunto / Título del Proyecto *</Label>
+                <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Asunto Manual *</Label>
                 <Input 
                   className="form-field h-11 font-bold text-slate-700" 
                   value={form.title} 
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))} 
-                  placeholder="Se sugiere automáticamente al elegir cliente" 
+                  placeholder="Ej. Mantenimiento Nave 5"
                 />
                 <p className="text-[10px] text-slate-400 font-medium">
-                  Al seleccionar un cliente se sugiere automáticamente: <span className="text-indigo-500 font-bold">Cliente - Mes/Año</span>. Puedes editarlo libremente.
+                  Formato final automático: <span className="text-indigo-500 font-bold">SLA – {form.title.trim() || 'ASUNTO'} N°[correlativo]</span>.
                 </p>
               </div>
 
@@ -436,6 +502,20 @@ export default function NewQuotationPage() {
                   />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Condiciones / términos de pago</Label>
+                  <Input
+                    className="form-field"
+                    value={form.commercialTerms.paymentTerms}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, paymentTerms: e.target.value },
+                      }))
+                    }
+                    placeholder="Ej. Crédito a 60 días"
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
                   <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Plazo / tiempo ejecución</Label>
                   <Input
                     className="form-field"
@@ -446,6 +526,20 @@ export default function NewQuotationPage() {
                         commercialTerms: { ...f.commercialTerms, executionTime: e.target.value },
                       }))
                     }
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Notas comerciales / garantía</Label>
+                  <textarea
+                    className="form-textarea min-h-[90px]"
+                    value={form.commercialTerms.additionalNotes}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        commercialTerms: { ...f.commercialTerms, additionalNotes: e.target.value },
+                      }))
+                    }
+                    placeholder="Garantías exigidas, cláusulas especiales o notas del acuerdo del cliente..."
                   />
                 </div>
               </div>
@@ -536,10 +630,18 @@ export default function NewQuotationPage() {
 
                 <div className="flex items-center justify-between group">
                   <div className="space-y-0.5">
-                    <p className="text-xs font-bold text-slate-600">Gastos Generales</p>
-                    <p className="text-[10px] text-slate-400 font-medium">Porcentaje (%)</p>
+                    <p className="text-xs font-bold text-slate-600">Gastos + Utilidad</p>
+                    <p className="text-[10px] text-slate-400 font-medium">Porcentaje global (%)</p>
                   </div>
                   <Input type="number" step="0.1" className="w-20 h-9 rounded-lg border-slate-200 font-mono font-bold text-right" value={form.generalExpensesPercentage} onChange={e => setForm(f => ({ ...f, generalExpensesPercentage: e.target.value }))} />
+                </div>
+
+                <div className="flex items-center justify-between group">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-bold text-slate-600">Descuento Comercial</p>
+                    <p className="text-[10px] text-slate-400 font-medium">Negociación (%)</p>
+                  </div>
+                  <Input type="number" step="0.1" min="0" max="100" className="w-20 h-9 rounded-lg border-slate-200 font-mono font-bold text-right" value={form.commercialDiscountPercentage} onChange={e => setForm(f => ({ ...f, commercialDiscountPercentage: e.target.value }))} />
                 </div>
 
                 <div className="flex items-center justify-between group">

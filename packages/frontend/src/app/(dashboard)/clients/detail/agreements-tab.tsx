@@ -47,6 +47,9 @@ const emptyForm = {
   paymentMethod: 'TRANSFER',
   billingCurrency: 'PEN',
   retentionPercentage: '0',
+  paymentTerms: '',
+  executionLocation: '',
+  executionTime: '',
   specialConditions: '',
   validFrom: '',
   validUntil: '',
@@ -86,6 +89,9 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
       paymentMethod: agreement.paymentMethod,
       billingCurrency: agreement.billingCurrency,
       retentionPercentage: String(agreement.retentionPercentage),
+      paymentTerms: agreement.paymentTerms || '',
+      executionLocation: agreement.executionLocation || '',
+      executionTime: agreement.executionTime || '',
       specialConditions: agreement.specialConditions || '',
       validFrom: agreement.validFrom ? agreement.validFrom.slice(0, 10) : '',
       validUntil: agreement.validUntil ? agreement.validUntil.slice(0, 10) : '',
@@ -102,6 +108,9 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
         paymentMethod: form.paymentMethod,
         billingCurrency: form.billingCurrency,
         retentionPercentage: parseFloat(form.retentionPercentage) || 0,
+        paymentTerms: form.paymentTerms || undefined,
+        executionLocation: form.executionLocation || undefined,
+        executionTime: form.executionTime || undefined,
         specialConditions: form.specialConditions || undefined,
         validFrom: form.validFrom || undefined,
         validUntil: form.validUntil || undefined,
@@ -175,9 +184,16 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
                       <span className="font-bold text-slate-900 dark:text-white uppercase tracking-tight">
                         {PAYMENT_METHODS[ag.paymentMethod] || ag.paymentMethod}
                       </span>
-                      <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded w-fit border border-blue-500/10">
-                        {CURRENCIES[ag.billingCurrency] || ag.billingCurrency}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded w-fit border border-blue-500/10">
+                          {CURRENCIES[ag.billingCurrency] || ag.billingCurrency}
+                        </span>
+                        {ag.executionLocation && (
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded w-fit border border-slate-200">
+                            {ag.executionLocation}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className="text-center py-6">
@@ -240,7 +256,7 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
 
       {/* ── Agreement Configuration Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-2xl h-[92vh] max-h-[92vh] rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
           <div className="bg-slate-950 px-10 py-12 text-white relative">
             <div className="absolute top-0 right-0 w-48 h-full bg-emerald-500/10 skew-x-12" />
             <DialogHeader className="relative">
@@ -256,7 +272,7 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
             </DialogHeader>
           </div>
 
-          <div className="p-10 space-y-10 bg-white dark:bg-slate-950">
+          <div className="flex-1 min-h-0 p-10 space-y-10 bg-white dark:bg-slate-950 overflow-y-auto overscroll-contain">
             <div className="grid gap-10 sm:grid-cols-2">
               <div className="space-y-3">
                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Protocolo de Crédito (Días)</Label>
@@ -299,6 +315,16 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
               </div>
             </div>
 
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Condiciones / Términos de Pago</Label>
+              <Input
+                value={form.paymentTerms}
+                onChange={setField('paymentTerms')}
+                placeholder="Ej. Facturación a 60 días, 50% adelanto / 50% contra entrega..."
+                className="h-14 rounded-xl bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 font-medium shadow-sm"
+              />
+            </div>
+
             <div className="grid gap-10 sm:grid-cols-2">
               <div className="space-y-3">
                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Retención de Garantía (%)</Label>
@@ -326,6 +352,27 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
               </div>
             </div>
 
+            <div className="grid gap-10 sm:grid-cols-2">
+              <div className="space-y-3">
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Lugar de Ejecución</Label>
+                <Input
+                  value={form.executionLocation}
+                  onChange={setField('executionLocation')}
+                  placeholder="Ej. Planta SLA, Nave 5"
+                  className="h-14 rounded-xl bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 font-medium shadow-sm"
+                />
+              </div>
+              <div className="space-y-3">
+                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Tiempo / Plazo de Ejecución</Label>
+                <Input
+                  value={form.executionTime}
+                  onChange={setField('executionTime')}
+                  placeholder="Ej. 10 días hábiles"
+                  className="h-14 rounded-xl bg-white dark:bg-slate-950 border-slate-200 dark:border-white/10 font-medium shadow-sm"
+                />
+              </div>
+            </div>
+
             <div className="space-y-3">
               <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Condiciones Especiales / Cláusulas</Label>
               <div className="relative">
@@ -341,7 +388,7 @@ export function AgreementsTab({ companyId, agreements, canEdit, onRefresh }: Agr
             </div>
           </div>
 
-          <DialogFooter className="p-10 bg-slate-50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 gap-4">
+          <DialogFooter className="p-6 sm:p-10 bg-slate-50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 gap-4 shrink-0">
             <Button variant="ghost" className="h-16 px-10 rounded-[2rem] font-black uppercase tracking-widest text-[10px] text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10 transition-all" onClick={() => setDialogOpen(false)}>CANCELAR</Button>
             <Button 
               onClick={handleSave} 

@@ -27,6 +27,55 @@ function getISOWeek(dateStr: string): string {
   return `${thu.getUTCFullYear()}-W${week.toString().padStart(2, '0')}`;
 }
 
+function limaDateAt(dateStr: string, hour: number, minute: number): Date {
+  return new Date(`${dateStr}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00-05:00`);
+}
+
+function roundToHalfHour(hours: number): number {
+  return Math.round(hours * 2) / 2;
+}
+
+function roundAttendanceTime(value: Date, type: AttendanceType): Date {
+  const rounded = new Date(value);
+  const minutesFromStart = rounded.getHours() * 60 + rounded.getMinutes();
+  const roundedMinutes =
+    type === AttendanceType.CHECK_IN
+      ? Math.ceil(minutesFromStart / 30) * 30
+      : Math.floor(minutesFromStart / 30) * 30;
+
+  rounded.setHours(0, roundedMinutes, 0, 0);
+  return rounded;
+}
+
+function calculateWorkMetrics(date: string, checkInTime: Date, checkOutTime: Date) {
+  const standardStart = limaDateAt(date, 8, 30);
+  const standardEnd = limaDateAt(date, 17, 0);
+  const graceStart = limaDateAt(date, 8, 45);
+  const msWorked = Math.max(0, checkOutTime.getTime() - checkInTime.getTime());
+  const rawHours = Math.round((msWorked / 3_600_000) * 100) / 100;
+  const standardHours = Math.round(((standardEnd.getTime() - standardStart.getTime()) / 3_600_000) * 100) / 100;
+  const fullStandardDay = checkInTime <= graceStart && checkOutTime >= standardEnd;
+  const roundedHours = fullStandardDay ? standardHours : roundToHalfHour(rawHours);
+  const overtimeRaw = Math.max(0, checkOutTime.getTime() - standardEnd.getTime()) / 3_600_000;
+  const overtimeHours = overtimeRaw >= 1 ? roundToHalfHour(overtimeRaw) : 0;
+
+  return {
+    rawHours,
+    hoursWorked: Math.max(0, roundedHours),
+    regularHours: fullStandardDay ? standardHours : Math.min(roundedHours, standardHours),
+    overtimeHours,
+    paidDays: fullStandardDay || roundedHours >= 4 ? 1 : 0.5,
+    attendancePolicy: {
+      standardStart: '08:30',
+      standardEnd: '17:00',
+      graceUntil: '08:45',
+      fullStandardDay,
+      rounded: true,
+      overtimeThresholdHours: 1,
+    },
+  };
+}
+
 @Injectable()
 export class AttendancesService {
   constructor(private readonly firebase: FirebaseService) {}
@@ -83,11 +132,14 @@ export class AttendancesService {
       );
     }
 
+    const roundedNow = roundAttendanceTime(now, AttendanceType.CHECK_IN);
     const id = this.firebase.generateId();
     const docData = {
       employeeId: dto.employeeId,
       type: AttendanceType.CHECK_IN,
-      timestamp: now,
+      timestamp: roundedNow,
+      actualTimestamp: now,
+      roundedTimestamp: roundedNow,
       photoUrl: dto.photoUrl,
       date: today,
       location: dto.location ?? null,
@@ -114,8 +166,10 @@ export class AttendancesService {
         week: getISOWeek(today),
         checkInId: id,
         checkOutId: null,
-        checkInTime: now,
+        checkInTime: roundedNow,
+        actualCheckInTime: now,
         checkOutTime: null,
+        actualCheckOutTime: null,
         hoursWorked: null,
         status: TimesheetStatus.INCOMPLETE,
         createdAt: now,
@@ -167,11 +221,14 @@ export class AttendancesService {
       ? checkInTimestamp.toDate()
       : new Date(checkInTimestamp);
 
+    const roundedNow = roundAttendanceTime(now, AttendanceType.CHECK_OUT);
     const id = this.firebase.generateId();
     const docData = {
       employeeId: dto.employeeId,
       type: AttendanceType.CHECK_OUT,
-      timestamp: now,
+      timestamp: roundedNow,
+      actualTimestamp: now,
+      roundedTimestamp: roundedNow,
       photoUrl: dto.photoUrl,
       date: today,
       location: dto.location ?? null,
@@ -182,9 +239,7 @@ export class AttendancesService {
 
     await this.col.doc(id).set(docData);
 
-    // Calculate hours worked (2 decimal places)
-    const msWorked = now.getTime() - checkInTime.getTime();
-    const hoursWorked = Math.round((msWorked / 3_600_000) * 100) / 100;
+    const workMetrics = calculateWorkMetrics(today, checkInTime, roundedNow);
 
     // Update the timesheet for this day
     const tsSnap = await this.timesheets
@@ -196,14 +251,15 @@ export class AttendancesService {
     if (!tsSnap.empty) {
       await this.timesheets.doc(tsSnap.docs[0].id).update({
         checkOutId: id,
-        checkOutTime: now,
-        hoursWorked,
+        checkOutTime: roundedNow,
+        actualCheckOutTime: now,
+        ...workMetrics,
         status: TimesheetStatus.PRESENT,
         updatedAt: now,
       });
     }
 
-    return { id, ...docData, hoursWorked };
+    return { id, ...docData, ...workMetrics };
   }
 
   async findAll(

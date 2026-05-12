@@ -14,10 +14,10 @@ const STATUS_MAP: Record<string, StatusConfig> = {
   SENT: { label: 'Enviada', variant: 'purple' },
   FOLLOW_UP: { label: 'Seguimiento', variant: 'info' },
   STAND_BY: { label: 'Stand By', variant: 'warning' },
-  APPROVED: { label: 'Aceptada', variant: 'success' },
-  REJECTED: { label: 'Rechazada', variant: 'destructive' },
+  APPROVED: { label: 'Aprobado', variant: 'success' },
+  REJECTED: { label: 'Denegado', variant: 'destructive' },
   EXPIRED: { label: 'Expirada', variant: 'destructive' },
-  INVOICED: { label: 'Facturada', variant: 'info' },
+  INVOICED: { label: 'Aprobado', variant: 'success' },
 
   // Project statuses (aligned with @fym/shared ProjectStatus)
   PLANNING: { label: 'Planificación', variant: 'secondary' },

@@ -15,7 +15,7 @@ export class QuotationCalculatorService {
     const sectionsSnap = await qRef.collection('sections').get();
     const batch = this.firebase.db.batch();
 
-    let grandSubtotal = 0;
+    let directSubtotal = 0;
 
     for (const sectionDoc of sectionsSnap.docs) {
       const itemsSnap = await sectionDoc.ref.collection('items').get();
@@ -30,16 +30,18 @@ export class QuotationCalculatorService {
       }
 
       batch.update(sectionDoc.ref, { subtotal: sectionSubtotal });
-      grandSubtotal += sectionSubtotal;
+      directSubtotal += sectionSubtotal;
     }
 
     const gePercentage = Number(quotation.generalExpensesPercentage || 0);
     const profitPercentage = Number(quotation.profitMarginPercentage || 0);
-    
-    const geAmount = (grandSubtotal * gePercentage) / 100;
-    const profitAmount = (grandSubtotal * profitPercentage) / 100;
+    const commercialDiscountPercentage = Number(quotation.commercialDiscountPercentage || 0);
 
-    const subtotal = grandSubtotal + geAmount + profitAmount;
+    const geAmount = (directSubtotal * gePercentage) / 100;
+    const profitAmount = (directSubtotal * profitPercentage) / 100;
+    const subtotalBeforeDiscount = directSubtotal + geAmount + profitAmount;
+    const commercialDiscountAmount = (subtotalBeforeDiscount * commercialDiscountPercentage) / 100;
+    const subtotal = Math.max(0, subtotalBeforeDiscount - commercialDiscountAmount);
     const igvPercentage = Number(quotation.igvPercentage || 18);
     const igvAmount = (subtotal * igvPercentage) / 100;
     const computedTotal = subtotal + igvAmount;
@@ -51,7 +53,18 @@ export class QuotationCalculatorService {
       ? Number(manualOverride)
       : computedTotal;
 
-    batch.update(qRef, { subtotal, igv: igvAmount, igvAmount, total });
+    batch.update(qRef, {
+      directSubtotal,
+      generalExpensesAmount: geAmount,
+      profitAmount,
+      subtotalBeforeDiscount,
+      commercialDiscountPercentage,
+      commercialDiscountAmount,
+      subtotal,
+      igv: igvAmount,
+      igvAmount,
+      total,
+    });
     await batch.commit();
 
     return { message: 'Recalculado correctamente', total };

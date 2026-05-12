@@ -29,10 +29,10 @@ export function statusLabelPrint(status: string): string {
     DRAFT: 'Borrador',
     REVIEW: 'En revisión',
     SENT: 'Enviada',
-    APPROVED: 'Aceptada',
-    REJECTED: 'Rechazada',
+    APPROVED: 'Aprobado',
+    REJECTED: 'Denegado',
     EXPIRED: 'Vencida',
-    INVOICED: 'Facturada',
+    INVOICED: 'Aprobado',
     FOLLOW_UP: 'Seguimiento',
     STAND_BY: 'Stand By',
   };

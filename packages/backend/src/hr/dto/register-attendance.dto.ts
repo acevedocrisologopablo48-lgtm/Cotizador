@@ -11,9 +11,9 @@ export class RegisterAttendanceDto {
   @IsEnum(AttendanceType)
   type: AttendanceType;
 
-  @ApiProperty({ description: 'URL de la foto capturada, ya subida a Firebase Storage' })
+  @ApiProperty({ description: 'Evidencia de foto capturada. Puede ser data URL comprimida o URL externa.' })
   @IsString()
-  @MaxLength(500)
+  @MaxLength(200000)
   photoUrl: string;
 
   @ApiPropertyOptional({

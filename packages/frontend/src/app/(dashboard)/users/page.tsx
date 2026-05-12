@@ -73,8 +73,14 @@ export default function UsersPage() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editRole, setEditRole] = useState('');
-  const [editAllowedProjectIds, setEditAllowedProjectIds] = useState<string[]>([]);
+  const [editForm, setEditForm] = useState({
+    email: '',
+    fullName: '',
+    phone: '',
+    role: '',
+    isActive: true,
+    allowedProjectIds: [] as string[],
+  });
 
   const [deleteUserOpen, setDeleteUserOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -165,20 +171,38 @@ export default function UsersPage() {
 
   const openEdit = (u: User) => {
     setEditingUser(u);
-    setEditRole(u.role);
-    setEditAllowedProjectIds(u.allowedProjectIds || []);
+    setEditForm({
+      email: u.email || '',
+      fullName: u.fullName || '',
+      phone: u.phone || '',
+      role: u.role || UserRole.VIEWER,
+      isActive: u.isActive,
+      allowedProjectIds: u.allowedProjectIds || [],
+    });
     setEditOpen(true);
   };
 
-  const handleEditRole = async () => {
+  const handleEditUser = async () => {
     if (!editingUser) return;
+    if (!editForm.fullName.trim() || !editForm.email.trim()) {
+      addToast('Nombre y correo son obligatorios', 'error');
+      return;
+    }
+    if (editForm.role === 'CLIENT' && editForm.allowedProjectIds.length === 0) {
+      addToast('Asigna al menos un proyecto al cliente', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      await api.put(`/auth/users/${editingUser.id}/role`, { role: editRole }, token!);
-      if (editRole === 'CLIENT') {
-        await api.put(`/auth/users/${editingUser.id}/client-access`, { allowedProjectIds: editAllowedProjectIds }, token!);
-      }
-      addToast('Rol actualizado', 'success');
+      await api.put(`/auth/users/${editingUser.id}`, {
+        email: editForm.email.trim(),
+        fullName: editForm.fullName.trim(),
+        phone: editForm.phone.trim() || undefined,
+        role: editForm.role,
+        isActive: editForm.isActive,
+        allowedProjectIds: editForm.role === 'CLIENT' ? editForm.allowedProjectIds : [],
+      }, token!);
+      addToast('Usuario actualizado', 'success');
       setEditOpen(false);
       load();
     } catch (e: any) {
@@ -382,7 +406,7 @@ export default function UsersPage() {
                     {isAdmin && (
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-blue-500 hover:bg-blue-50" onClick={() => openEdit(u)} title="Cambiar rol">
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-blue-500 hover:bg-blue-50" onClick={() => openEdit(u)} title="Editar usuario">
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
@@ -502,22 +526,47 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Role Dialog */}
+      {/* Edit User Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-sm rounded-2xl">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <Pencil className="h-4 w-4 text-primary" /> Cambiar Rol
+              <Pencil className="h-4 w-4 text-primary" /> Editar Usuario
             </DialogTitle>
           </DialogHeader>
           {editingUser && (
             <div className="space-y-4 py-2">
-              <p className="text-sm text-muted-foreground">
-                Usuario: <span className="font-semibold text-foreground">{editingUser.fullName}</span>
-              </p>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide">Nuevo Rol</Label>
-                <Select value={editRole} onValueChange={setEditRole}>
+                <Label className="text-xs font-semibold uppercase tracking-wide">Nombre completo</Label>
+                <Input
+                  value={editForm.fullName}
+                  onChange={e => setEditForm(f => ({ ...f, fullName: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide">Correo electronico</Label>
+                <Input
+                  type="email"
+                  value={editForm.email}
+                  onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+                  className="rounded-xl"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Puede ser un correo interno valido, por ejemplo supervisor@zaurak.local.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide">Telefono</Label>
+                <Input
+                  value={editForm.phone}
+                  onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide">Rol</Label>
+                <Select value={editForm.role} onValueChange={role => setEditForm(f => ({ ...f, role }))}>
                   <SelectTrigger className="rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
@@ -528,14 +577,24 @@ export default function UsersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {editRole === 'CLIENT' && (
+              <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={editForm.isActive}
+                  onChange={e => setEditForm(f => ({ ...f, isActive: e.target.checked }))}
+                  disabled={editingUser.id === currentUser?.id}
+                  className="h-4 w-4"
+                />
+                Usuario activo
+              </label>
+              {editForm.role === 'CLIENT' && (
                 <ProjectAccessSelector
                   projects={projects}
-                  selectedIds={editAllowedProjectIds}
-                  onChange={setEditAllowedProjectIds}
+                  selectedIds={editForm.allowedProjectIds}
+                  onChange={allowedProjectIds => setEditForm(f => ({ ...f, allowedProjectIds }))}
                 />
               )}
-              {editRole === 'FIELD_SUPERVISOR' && (
+              {editForm.role === 'FIELD_SUPERVISOR' && (
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                   Acceso operativo: proyectos, fotos de partidas, fotos de facturas sin costo total, asistencias y consultas.
                 </p>
@@ -544,7 +603,7 @@ export default function UsersPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)} className="rounded-xl">Cancelar</Button>
-            <Button onClick={handleEditRole} disabled={saving} className="rounded-xl">
+            <Button onClick={handleEditUser} disabled={saving} className="rounded-xl">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Guardar
             </Button>

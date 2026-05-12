@@ -44,7 +44,7 @@ export class QuotationItemsService {
           ? quantity * unitCost
           : 0;
         return {
-          category: String(item.category || 'Insumos').trim(),
+          category: String(item.category || 'Materiales / Insumos').trim(),
           description: String(item.description || '').trim(),
           unit: String(item.unit || 'UND').trim(),
           quantity: Number.isFinite(quantity) ? quantity : 0,
@@ -65,26 +65,106 @@ export class QuotationItemsService {
         unitPrice,
         subtotal: quantity * unitPrice,
         costBreakdown: data.costBreakdown === undefined ? existing?.costBreakdown : [],
-        profitabilityPercentage: data.costBreakdown === undefined ? (data.profitabilityPercentage ?? existing?.profitabilityPercentage ?? null) : null,
+        profitabilityPercentage: null,
         costTotal: data.costBreakdown === undefined ? (data.costTotal ?? existing?.costTotal ?? null) : null,
         saleTotal: quantity * unitPrice,
       };
     }
 
-    const profitabilityPercentage = Math.max(0, Number(data.profitabilityPercentage ?? existing?.profitabilityPercentage ?? 0) || 0);
     const costTotal = costBreakdown.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-    const saleTotal = costTotal * (1 + profitabilityPercentage / 100);
+    const saleTotal = costTotal;
     const unitPrice = quantity > 0 ? saleTotal / quantity : 0;
 
     return {
       ...data,
       costBreakdown,
-      profitabilityPercentage,
+      profitabilityPercentage: null,
       costTotal,
       saleTotal,
       unitPrice,
       subtotal: saleTotal,
     };
+  }
+
+  private normalizeName(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private supplyTypeFromCostCategory(category: string) {
+    const normalized = this.normalizeName(category);
+    if (normalized.includes('mano de obra')) return 'WORKFORCE';
+    if (normalized.includes('maquinaria')) return 'EQUIPMENT';
+    if (normalized.includes('herramient')) return 'TOOL';
+    if (normalized.includes('transporte') || normalized.includes('logistica')) return 'SERVICE';
+    return 'MATERIAL';
+  }
+
+  private async syncCostBreakdownToSupplies(costBreakdown: any[]) {
+    const validRows = this.sanitizeCostBreakdown(costBreakdown);
+    if (validRows.length === 0) return;
+
+    const now = new Date();
+    const batch = this.firebase.db.batch();
+
+    for (const row of validRows) {
+      const normalizedName = this.normalizeName(row.description);
+      if (!normalizedName) continue;
+      const existing = await this.firebase.db
+        .collection('supplies')
+        .where('normalizedName', '==', normalizedName)
+        .limit(1)
+        .get();
+
+      if (existing.empty) {
+        const ref = this.firebase.db.collection('supplies').doc(this.firebase.generateId());
+        batch.set(ref, {
+          code: `APU-${ref.id.slice(-6).toUpperCase()}`,
+          name: row.description,
+          normalizedName,
+          description: row.category,
+          supplyType: this.supplyTypeFromCostCategory(row.category),
+          unitOfMeasure: row.unit,
+          baseUnitCost: row.unitCost,
+          currency: 'PEN',
+          source: 'QUOTATION_APU',
+          isActive: true,
+          lastPriceUpdate: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        continue;
+      }
+
+      const doc = existing.docs[0];
+      const current = doc.data();
+      const priceChanged = Number(current.baseUnitCost || 0) !== Number(row.unitCost || 0);
+      batch.update(doc.ref, {
+        name: current.name || row.description,
+        description: current.description || row.category,
+        supplyType: current.supplyType || this.supplyTypeFromCostCategory(row.category),
+        unitOfMeasure: row.unit || current.unitOfMeasure || 'UND',
+        baseUnitCost: row.unitCost,
+        lastPriceUpdate: priceChanged ? now : current.lastPriceUpdate || now,
+        updatedAt: now,
+      });
+
+      if (priceChanged) {
+        const historyRef = doc.ref.collection('priceHistory').doc();
+        batch.set(historyRef, {
+          oldPrice: current.baseUnitCost ?? null,
+          newPrice: row.unitCost,
+          reason: 'Actualizacion desde APU de cotizacion',
+          changedAt: now,
+        });
+      }
+    }
+
+    await batch.commit();
   }
 
   async create(quotationId: string, sectionId: string, data: any) {
@@ -94,6 +174,7 @@ export class QuotationItemsService {
     const sortOrder = data.sortOrder ?? existing.size;
     const docData = { ...this.buildPricingData(data), sortOrder };
     await this.col(quotationId, sectionId).doc(id).set(docData);
+    await this.syncCostBreakdownToSupplies(docData.costBreakdown || []);
     await this.calculator.recalculateQuotation(quotationId);
     return { id, ...docData };
   }
@@ -108,6 +189,7 @@ export class QuotationItemsService {
     const updateData = this.buildPricingData(data, existing);
 
     await docRef.update(updateData);
+    await this.syncCostBreakdownToSupplies(updateData.costBreakdown || []);
     await this.calculator.recalculateQuotation(quotationId);
     return { id, ...existing, ...updateData };
   }

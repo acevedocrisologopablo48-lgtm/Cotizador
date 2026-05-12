@@ -209,6 +209,9 @@ export const api = {
   download: (endpoint: string, filename: string, token?: string) =>
     apiDownload(endpoint, filename, { token }),
 
+  downloadPost: (endpoint: string, body: unknown, filename: string, token?: string) =>
+    apiDownload(endpoint, filename, { token, method: 'POST', body }),
+
   downloadQuotationPdf: (quotationId: string, filename: string, token?: string, force = false) =>
     apiDownloadPdf(`/quotations/${quotationId}/pdf${force ? '?force=true' : ''}`, filename, token),
 };

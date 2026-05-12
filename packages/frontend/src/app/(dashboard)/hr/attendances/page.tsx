@@ -4,8 +4,6 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
-import { storage } from '@/lib/firebase';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +19,28 @@ import {
 import { AttendanceType } from '@fym/shared';
 import { Input } from '@/components/ui/input';
 import type { Employee, Attendance } from '@/lib/types/hr';
+
+function roundAttendanceTime(value: string | Date, type: AttendanceType) {
+  const date = new Date(value);
+  const rounded = new Date(date);
+  const minutesFromStart = rounded.getHours() * 60 + rounded.getMinutes();
+  const roundedMinutes =
+    type === AttendanceType.CHECK_IN
+      ? Math.ceil(minutesFromStart / 30) * 30
+      : Math.floor(minutesFromStart / 30) * 30;
+  rounded.setHours(0, roundedMinutes, 0, 0);
+  return rounded;
+}
+
+function formatAttendanceTime(value: string | Date, type: AttendanceType) {
+  return roundAttendanceTime(value, type).toLocaleTimeString('es-PE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'America/Lima',
+  });
+}
 
 // ─── Camera capture hook ───────────────────────────────────────────────────────
 function useCameraCapture() {
@@ -68,16 +88,20 @@ function useCameraCapture() {
     return new Promise((resolve, reject) => {
       if (!videoRef.current) return reject(new Error('Video no disponible'));
       const canvas = document.createElement('canvas');
-      canvas.width  = videoRef.current.videoWidth  || 640;
-      canvas.height = videoRef.current.videoHeight || 480;
-      canvas.getContext('2d')!.drawImage(videoRef.current, 0, 0);
+      const sourceWidth = videoRef.current.videoWidth || 640;
+      const sourceHeight = videoRef.current.videoHeight || 480;
+      const maxWidth = 420;
+      const scale = Math.min(1, maxWidth / sourceWidth);
+      canvas.width = Math.round(sourceWidth * scale);
+      canvas.height = Math.round(sourceHeight * scale);
+      canvas.getContext('2d')!.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       canvas.toBlob((blob) => {
         if (!blob) return reject(new Error('No se pudo capturar la imagen'));
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.58);
         const result = { blob, dataUrl };
         setCaptured(result);
         resolve(result);
-      }, 'image/jpeg', 0.85);
+      }, 'image/jpeg', 0.58);
     });
   }, []);
 
@@ -178,17 +202,10 @@ export default function HrAttendancesPage() {
 
     setSubmitting(true);
     try {
-      // Upload photo to Firebase Storage
-      const path = `hr/attendances/${selectedEmployee.id}/${Date.now()}.jpg`;
-      const fileRef = storageRef(storage, path);
-      await uploadBytes(fileRef, camera.captured.blob, { contentType: 'image/jpeg' });
-      const photoUrl = await getDownloadURL(fileRef);
-
-      // Register attendance
       await api.post('/hr/attendances', {
         employeeId: selectedEmployee.id,
         type: attendanceType,
-        photoUrl,
+        photoUrl: camera.captured.dataUrl,
       }, token!);
 
       addToast(
@@ -359,9 +376,7 @@ export default function HrAttendancesPage() {
                         <div className="flex flex-col">
                           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{att.date}</span>
                           <span className="text-xs font-mono text-slate-400">
-                            {att.timestamp
-                              ? new Date(att.timestamp).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/Lima' })
-                              : '-'}
+                            {att.timestamp ? formatAttendanceTime(att.timestamp, att.type) : '-'}
                           </span>
                         </div>
                       </TableCell>

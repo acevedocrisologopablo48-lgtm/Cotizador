@@ -35,7 +35,7 @@ import {
   type TechnicalSection,
 } from '@fym/shared';
 
-const NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'default' | 'outline' }[]> = {
+const LEGACY_NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'default' | 'outline' }[]> = {
   DRAFT: [{ label: 'Enviar a Revisión', next: 'REVIEW', variant: 'default' }],
   REVIEW: [
     { label: 'Devolver a Borrador', next: 'DRAFT', variant: 'outline' },
@@ -69,6 +69,35 @@ const NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'de
     { label: 'Reactivar Seguimiento', next: 'FOLLOW_UP', variant: 'default' },
   ],
 };
+void LEGACY_NEXT_STATUSES;
+
+const NEXT_STATUSES: Record<string, { label: string; next: string; variant?: 'default' | 'outline' }[]> = {
+  DRAFT: [
+    { label: 'Enviar a Revision', next: 'REVIEW', variant: 'default' },
+    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Denegar', next: 'REJECTED', variant: 'outline' },
+  ],
+  REVIEW: [
+    { label: 'Devolver a Borrador', next: 'DRAFT', variant: 'outline' },
+    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Denegar', next: 'REJECTED', variant: 'outline' },
+  ],
+  SENT: [
+    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Denegar', next: 'REJECTED', variant: 'outline' },
+  ],
+  FOLLOW_UP: [
+    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Denegar', next: 'REJECTED', variant: 'outline' },
+  ],
+  STAND_BY: [
+    { label: 'Aprobar', next: 'APPROVED', variant: 'default' },
+    { label: 'Denegar', next: 'REJECTED', variant: 'outline' },
+  ],
+  APPROVED: [],
+  REJECTED: [{ label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' }],
+  EXPIRED: [{ label: 'Volver a Borrador', next: 'DRAFT', variant: 'outline' }],
+};
 
 const extractStoragePath = (url: string): string | null => {
   const m = url.match(/\/o\/([^?]+)/);
@@ -87,7 +116,6 @@ interface ItemForm {
   quantity: string;
   unitPrice: string;
   longDescription: string;
-  profitabilityPercentage: string;
   costBreakdown: CostBreakdownRow[];
 }
 
@@ -99,18 +127,32 @@ interface CostBreakdownRow {
   unitCost: string;
 }
 
-const EMPTY_COST_ROW: CostBreakdownRow = { category: 'Insumos', description: '', unit: 'UND', quantity: '', unitCost: '' };
-const EMPTY_ITEM: ItemForm = {
+const COST_CATEGORIES = [
+  'Materiales / Insumos',
+  'Maquinarias - Izaje',
+  'Maquinarias - Altura',
+  'Maquinarias - Corte',
+  'EPPs - Básicos',
+  'EPPs - Especiales',
+  'Mano de Obra',
+  'Transporte y Logística',
+  'Herramientas',
+];
+
+const emptyCostRows = (): CostBreakdownRow[] =>
+  COST_CATEGORIES.map(category => ({ category, description: '', unit: 'UND', quantity: '', unitCost: '' }));
+
+const EMPTY_COST_ROW: CostBreakdownRow = { category: 'Materiales / Insumos', description: '', unit: 'UND', quantity: '', unitCost: '' };
+const createEmptyItem = (): ItemForm => ({
   description: '',
   unit: 'UND',
   quantity: '',
   unitPrice: '',
   longDescription: '',
-  profitabilityPercentage: '0',
-  costBreakdown: [],
-};
+  costBreakdown: emptyCostRows(),
+});
 
-const COST_CATEGORIES = ['Insumos', 'Maquinarias', 'Operarios', 'Herramientas', 'Otros'];
+const EMPTY_ITEM: ItemForm = createEmptyItem();
 
 const toNumber = (value: string | number | null | undefined) => {
   const n = Number(value);
@@ -127,10 +169,9 @@ const priceSummary = (form: ItemForm) => {
   const costTotal = form.costBreakdown
     .filter(row => row.description.trim() && toNumber(row.quantity) > 0 && toNumber(row.unitCost) >= 0)
     .reduce((sum, row) => sum + costRowSubtotal(row), 0);
-  const profitabilityPercentage = toNumber(form.profitabilityPercentage);
-  const saleTotal = hasBreakdown ? costTotal * (1 + profitabilityPercentage / 100) : toNumber(form.quantity) * toNumber(form.unitPrice);
+  const saleTotal = hasBreakdown ? costTotal : toNumber(form.quantity) * toNumber(form.unitPrice);
   const unitPrice = toNumber(form.quantity) > 0 ? saleTotal / toNumber(form.quantity) : 0;
-  return { costTotal, profitabilityPercentage, saleTotal, unitPrice };
+  return { costTotal, saleTotal, unitPrice };
 };
 
 const hydrateItemForm = (item: any): ItemForm => ({
@@ -139,7 +180,6 @@ const hydrateItemForm = (item: any): ItemForm => ({
   quantity: String(item.quantity ?? ''),
   unitPrice: String(item.unitPrice ?? ''),
   longDescription: String(item.longDescription ?? ''),
-  profitabilityPercentage: String(item.profitabilityPercentage ?? '0'),
   costBreakdown: Array.isArray(item.costBreakdown)
     ? item.costBreakdown.map((row: any) => ({
         category: String(row.category || 'Insumos'),
@@ -160,7 +200,6 @@ const serializeItemForm = (form: ItemForm) => {
     quantity: toNumber(form.quantity),
     unitPrice: hasBreakdown ? summary.unitPrice : toNumber(form.unitPrice),
     longDescription: form.longDescription.trim() || undefined,
-    profitabilityPercentage: hasBreakdown ? summary.profitabilityPercentage : undefined,
     costBreakdown: hasBreakdown
       ? form.costBreakdown
           .filter(row => row.description.trim() && toNumber(row.quantity) > 0 && toNumber(row.unitCost) >= 0)
@@ -282,17 +321,6 @@ function CostBreakdownEditor({
               <p className="font-mono font-black">{currency} {formatMoney(summary.costTotal)}</p>
             </div>
             <div>
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rentabilidad %</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                className="mt-1 h-9 rounded-lg font-mono"
-                value={form.profitabilityPercentage}
-                onChange={event => onChange({ ...form, profitabilityPercentage: event.target.value })}
-              />
-            </div>
-            <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Venta</p>
               <p className="font-mono font-black text-blue-700">{currency} {formatMoney(summary.saleTotal)}</p>
             </div>
@@ -342,6 +370,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
     contactId: '',
     tipo: '',
     generalExpensesPercentage: '',
+    commercialDiscountPercentage: '',
     deliveryTimeDays: '',
     warrantyText: '',
     manualTotalOverride: '',
@@ -469,7 +498,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
 
   const openItemDialog = (sectionId: string) => {
     setActiveSectionId(sectionId);
-    setItemForm(EMPTY_ITEM);
+    setItemForm(createEmptyItem());
     setItemDialog(true);
   };
 
@@ -531,6 +560,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
       contactId: quotation.contactId || '',
       tipo: quotation.tipo || '',
       generalExpensesPercentage: String(quotation.generalExpensesPercentage ?? ''),
+      commercialDiscountPercentage: String(quotation.commercialDiscountPercentage ?? ''),
       deliveryTimeDays: String(quotation.deliveryTimeDays || ''),
       warrantyText: quotation.warrantyText || '',
       manualTotalOverride: quotation.manualTotalOverride != null ? String(quotation.manualTotalOverride) : '',
@@ -590,6 +620,12 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
       if (metaForm.generalExpensesPercentage !== '') {
         const gep = parseFloat(metaForm.generalExpensesPercentage);
         if (!isNaN(gep) && gep >= 0) body.generalExpensesPercentage = gep;
+      }
+      if (metaForm.commercialDiscountPercentage !== '') {
+        const discount = parseFloat(metaForm.commercialDiscountPercentage);
+        if (!isNaN(discount) && discount >= 0) body.commercialDiscountPercentage = discount;
+      } else {
+        body.commercialDiscountPercentage = 0;
       }
       if (metaForm.deliveryTimeDays !== '') {
         const dtd = parseInt(metaForm.deliveryTimeDays, 10);
@@ -1160,8 +1196,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                                     <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Costos del item sin IGV</span>
                                     <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
                                       <span>Costo: {currency} {Number(item.costTotal || 0).toFixed(2)}</span>
-                                      <span>Rent.: {Number(item.profitabilityPercentage || 0).toFixed(2)}%</span>
-                                      <span className="font-bold text-blue-700">Venta: {currency} {Number(item.saleTotal ?? item.subtotal ?? 0).toFixed(2)}</span>
+                                      <span className="font-bold text-blue-700">Base venta: {currency} {Number(item.saleTotal ?? item.subtotal ?? 0).toFixed(2)}</span>
                                     </div>
                                   </div>
                                   <div className="grid gap-1">
@@ -1380,6 +1415,20 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                 
                 <div className="space-y-2 pt-2">
                   <div className="flex justify-between items-center px-2 py-1">
+                    <span className="text-xs text-slate-400">Costo Directo</span>
+                    <span className="text-sm font-mono font-bold">{fmt(quotation.directSubtotal ?? quotation.subtotalBeforeDiscount ?? quotation.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-2 py-1">
+                    <span className="text-xs text-slate-400">Gastos + Utilidad ({quotation.generalExpensesPercentage ?? 0}%)</span>
+                    <span className="text-sm font-mono font-bold">+{fmt(quotation.generalExpensesAmount ?? 0)}</span>
+                  </div>
+                  {Number(quotation.commercialDiscountAmount || 0) > 0 && (
+                    <div className="flex justify-between items-center px-2 py-1">
+                      <span className="text-xs text-slate-400">Descuento Comercial ({quotation.commercialDiscountPercentage ?? 0}%)</span>
+                      <span className="text-sm font-mono font-bold text-emerald-400">-{fmt(quotation.commercialDiscountAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center px-2 py-1">
                     <span className="text-xs text-slate-400">Subtotal Operativo</span>
                     <span className="text-sm font-mono font-bold">{fmt(quotation.subtotal)}</span>
                   </div>
@@ -1417,14 +1466,14 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
 
       {/* Edit metadata dialog */}
       <Dialog open={editMetaDialog} onOpenChange={setEditMetaDialog}>
-        <DialogContent className="max-w-4xl overflow-hidden p-0 border-none shadow-2xl font-jakarta">
-          <DialogHeader className="p-6 bg-slate-900 text-white border-b border-white/10">
+        <DialogContent className="max-w-4xl h-[92vh] max-h-[92vh] overflow-hidden p-0 border-none shadow-2xl font-jakarta flex flex-col">
+          <DialogHeader className="shrink-0 p-6 bg-slate-900 text-white border-b border-white/10">
             <DialogTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
               <Pencil className="h-6 w-6 text-orange-500" />
               Parámetros de la Cotización
             </DialogTitle>
           </DialogHeader>
-          <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto bg-white dark:bg-slate-950">
+          <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto overscroll-contain bg-white dark:bg-slate-950">
             
             {/* ── Cliente & Tipo ── */}
             <div className="space-y-4">
@@ -1772,10 +1821,14 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
                   <Input id="meta-igv" type="number" step="0.1" min="0" max="100" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.igvPercentage} onChange={e => setMetaForm(f => ({ ...f, igvPercentage: e.target.value }))} />
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="meta-gep" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Gastos Generales (%)</Label>
-                  <Input id="meta-gep" type="number" step="0.1" min="0" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.generalExpensesPercentage} onChange={e => setMetaForm(f => ({ ...f, generalExpensesPercentage: e.target.value }))} placeholder="Ej: 10" />
+                  <Label htmlFor="meta-gep" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Gastos Operativos + Utilidad (%)</Label>
+                  <Input id="meta-gep" type="number" step="0.1" min="0" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.generalExpensesPercentage} onChange={e => setMetaForm(f => ({ ...f, generalExpensesPercentage: e.target.value }))} placeholder="Ej: 13" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="meta-discount" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Descuento Comercial (%)</Label>
+                  <Input id="meta-discount" type="number" step="0.1" min="0" max="100" className="h-11 rounded-xl border-slate-200 font-mono" value={metaForm.commercialDiscountPercentage} onChange={e => setMetaForm(f => ({ ...f, commercialDiscountPercentage: e.target.value }))} placeholder="Ej: 2" />
                 </div>
               </div>
             </div>
@@ -1868,7 +1921,7 @@ export default function QuotationDetailPage({ id: idProp }: { id?: string } = {}
               </div>
             </div>
           </div>
-          <DialogFooter className="p-6 bg-slate-50 dark:bg-white/5 border-t border-white/10">
+          <DialogFooter className="shrink-0 p-6 bg-slate-50 dark:bg-white/5 border-t border-white/10">
             <Button variant="ghost" className="font-bold text-xs" onClick={() => setEditMetaDialog(false)}>Cancelar</Button>
             <Button className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-8 rounded-xl shadow-lg shadow-orange-500/20" onClick={saveMeta}>Actualizar Cotización</Button>
           </DialogFooter>

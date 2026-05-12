@@ -22,6 +22,46 @@ export class ProjectTasksService {
     return doc;
   }
 
+  private async pushAssignmentNotification(params: {
+    projectId: string;
+    projectCode?: string | null;
+    projectName?: string | null;
+    taskId: string;
+    taskCode?: string | null;
+    taskTitle: string;
+    assigneeId?: string | null;
+    assignedById: string;
+    assignedByName: string;
+  }) {
+    if (!params.assigneeId || params.assigneeId === params.assignedById) return;
+
+    const id = this.firebase.generateId();
+    const initials = (params.assignedByName || 'ZA')
+      .split(' ')
+      .map((part) => part[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+
+    await this.firebase.db.collection('notifications').doc(id).set({
+      userId: params.assigneeId,
+      type: 'TASK_ASSIGNED',
+      projectId: params.projectId,
+      projectCode: params.projectCode || null,
+      projectName: params.projectName || null,
+      taskId: params.taskId,
+      taskCode: params.taskCode || null,
+      title: 'Nueva tarea asignada',
+      body: `${params.assignedByName} te asigno: ${params.taskTitle}`,
+      assignedById: params.assignedById,
+      assignedByName: params.assignedByName,
+      assignedByInitials: initials || 'ZA',
+      read: false,
+      createdAt: new Date(),
+    });
+  }
+
   // ─── Queries ─────────────────────────────────────────────────────────
 
   /**
@@ -210,6 +250,18 @@ export class ProjectTasksService {
 
     await this.col.doc(id).set(docData);
 
+    await this.pushAssignmentNotification({
+      projectId,
+      projectCode: project.projectCode,
+      projectName: project.name,
+      taskId: id,
+      taskCode,
+      taskTitle: docData.title,
+      assigneeId: docData.assigneeId,
+      assignedById: user.id,
+      assignedByName: user.fullName,
+    });
+
     // Update project task summary (fire-and-forget)
     this.updateTaskSummary(projectId).catch(() => {});
 
@@ -337,6 +389,22 @@ export class ProjectTasksService {
     }
 
     await this.col.doc(id).update(updateData);
+
+    if (changes.includes('assignee')) {
+      const projectDoc = await this.firebase.db.collection('projects').doc(existing.projectId).get();
+      const project = projectDoc.data() as any;
+      await this.pushAssignmentNotification({
+        projectId: existing.projectId,
+        projectCode: project?.projectCode,
+        projectName: project?.name,
+        taskId: id,
+        taskCode: existing.taskCode,
+        taskTitle: updateData.title || existing.title,
+        assigneeId: updateData.assigneeId,
+        assignedById: user.id,
+        assignedByName: user.fullName,
+      });
+    }
 
     // Log activity
     if (changes.length > 0) {

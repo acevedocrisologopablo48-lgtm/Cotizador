@@ -36,9 +36,9 @@ export class QuotationsService {
 
   private extractSlaSubject(value: unknown) {
     const raw = String(value || '').trim();
-    const withoutPrefix = raw.replace(/^SLA\s*[–-]\s*/i, '');
+    const withoutPrefix = raw.replace(/^SLA\s*[–—-]\s*/i, '');
     return withoutPrefix
-      .replace(/\s*N[°º]\s*[A-Z]+-\d{4}-\d{3}\s*$/i, '')
+      .replace(/\s*N[°º]\s*[A-Z]+-\d+\s*$/i, '')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 500) || 'Propuesta';
@@ -179,7 +179,17 @@ export class QuotationsService {
     }
     if (quotation.createdBy) {
       const u = await this.firebase.db.collection('users').doc(quotation.createdBy).get();
-      if (u.exists) quotation.creator = { id: u.id, fullName: u.data()?.fullName, email: u.data()?.email };
+      if (u.exists) {
+        const user = u.data() || {};
+        quotation.creator = {
+          id: u.id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          roleLabel: user.roleLabel,
+          signatureUrl: user.signatureUrl || user.digitalSignatureUrl || user.firmaUrl || '',
+        };
+      }
     }
     if (quotation.approvedBy) {
       const u = await this.firebase.db.collection('users').doc(quotation.approvedBy).get();
@@ -247,6 +257,7 @@ export class QuotationsService {
       ['igvPercentage', 0, 100],
       ['generalExpensesPercentage', 0, 100],
       ['profitMarginPercentage', 0, 100],
+      ['commercialDiscountPercentage', 0, 100],
       ['deliveryTimeDays', 0, 3650],
     ];
     for (const [field, min, max] of checks) {
@@ -285,6 +296,43 @@ export class QuotationsService {
     if (et) out.executionTime = et;
     if (an) out.additionalNotes = an;
     return out;
+  }
+
+  private commercialTermsFromAgreement(agreement: Record<string, any> | null, company?: Record<string, any> | null): CommercialTerms {
+    if (!agreement) return {};
+    const creditDays = Number(agreement.creditDays || 0);
+    const warrantyDays = Number(agreement.warrantyDays || 0);
+    const paymentMethodLabels: Record<string, string> = {
+      CASH: 'Efectivo',
+      TRANSFER: 'Transferencia',
+      CHECK: 'Cheque',
+      LETTER_OF_CREDIT: 'Carta de crédito',
+    };
+    const paymentMethod = String(agreement.paymentMethod || '').trim();
+    const notes = [
+      warrantyDays > 0 ? `Garantía exigida: ${warrantyDays} días.` : '',
+      String(agreement.specialConditions || '').trim(),
+    ].filter(Boolean).join('\n');
+
+    return this.sanitizeCommercialTerms({
+      paymentMethod: paymentMethodLabels[paymentMethod] || paymentMethod,
+      paymentTerms: String(agreement.paymentTerms || '').trim() || (creditDays > 0 ? `Crédito a ${creditDays} días` : 'Pago al contado'),
+      executionLocation: String(agreement.executionLocation || company?.address || '').trim(),
+      executionTime: String(agreement.executionTime || '').trim(),
+      additionalNotes: notes,
+    });
+  }
+
+  private async getCommercialDefaults(data: any): Promise<CommercialTerms> {
+    if (!data?.agreementId) return {};
+    const [agreementDoc, companyDoc] = await Promise.all([
+      this.firebase.db.collection('agreements').doc(data.agreementId).get(),
+      data.companyId ? this.firebase.db.collection('companies').doc(data.companyId).get() : Promise.resolve(null as any),
+    ]);
+    return this.commercialTermsFromAgreement(
+      agreementDoc.exists ? agreementDoc.data() || null : null,
+      companyDoc?.exists ? companyDoc.data() || null : null,
+    );
   }
 
   private sanitizeTechnicalSections(raw: unknown): TechnicalSection[] {
@@ -409,7 +457,10 @@ export class QuotationsService {
     const companySettings = await this.configService.getCompanySettings();
 
     const documentMode = normalizeQuotationDocumentMode(data.documentMode);
-    const commercialTerms = this.sanitizeCommercialTerms(data.commercialTerms);
+    const commercialTerms = {
+      ...(await this.getCommercialDefaults(data)),
+      ...this.sanitizeCommercialTerms(data.commercialTerms),
+    };
     let technicalSections = this.sanitizeTechnicalSections(data.technicalSections);
     if (documentMode === QuotationDocumentMode.PROJECT && technicalSections.length === 0) {
       technicalSections = [...DEFAULT_PROJECT_TECHNICAL_SECTIONS];
@@ -437,6 +488,8 @@ export class QuotationsService {
       validityDays: data.validityDays ?? companySettings.defaultValidityDays ?? 15,
       currency: data.currency ?? companySettings.defaultCurrency ?? 'PEN',
       igvPercentage: data.igvPercentage ?? companySettings.defaultIgvPercentage ?? 18,
+      generalExpensesPercentage: data.generalExpensesPercentage ?? 13,
+      commercialDiscountPercentage: data.commercialDiscountPercentage ?? 0,
       profitMarginPercentage: 0,
       quotationNumber: number,
       status: 'DRAFT',
@@ -499,6 +552,18 @@ export class QuotationsService {
     const allowed = new Set<string>(
       QUOTATION_STATUS_TRANSITIONS[currentStatus as QuotationStatus] || [],
     );
+    if (
+      newStatus === QuotationStatus.APPROVED &&
+      ['DRAFT', 'REVIEW', 'SENT', 'FOLLOW_UP', 'STAND_BY'].includes(currentStatus)
+    ) {
+      allowed.add(QuotationStatus.APPROVED);
+    }
+    if (
+      newStatus === QuotationStatus.REJECTED &&
+      ['DRAFT', 'REVIEW', 'SENT', 'FOLLOW_UP', 'STAND_BY', 'EXPIRED'].includes(currentStatus)
+    ) {
+      allowed.add(QuotationStatus.REJECTED);
+    }
     if (currentStatus !== newStatus && !allowed.has(newStatus)) {
       throw new BadRequestException(
         `Transición no permitida: ${currentStatus} → ${newStatus}`,
@@ -588,6 +653,7 @@ export class QuotationsService {
       validityDays: original.validityDays,
       currency: original.currency,
       generalExpensesPercentage: original.generalExpensesPercentage,
+      commercialDiscountPercentage: original.commercialDiscountPercentage ?? 0,
       profitMarginPercentage: original.profitMarginPercentage,
       igvPercentage: original.igvPercentage,
       introductionText: original.introductionText,
@@ -648,10 +714,7 @@ export class QuotationsService {
   private async generateQuotationNumber(): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const yy = String(year).slice(-2);
-    // Counter per year+month so each month restarts the sequence
-    const counterKey = `quotations_${year}${month}`;
+    const counterKey = `quotations_sla_${year}`;
     const counterRef = this.firebase.db.collection('_counters').doc(counterKey);
     const res = await this.firebase.db.runTransaction(async (t) => {
       const doc = await t.get(counterRef);
@@ -659,7 +722,7 @@ export class QuotationsService {
       t.set(counterRef, { count }, { merge: true });
       return count;
     });
-    return `COT-${yy}${month}-${String(res).padStart(3, '0')}`;
+    return `SLA-${String(res).padStart(3, '0')}`;
   }
 
 

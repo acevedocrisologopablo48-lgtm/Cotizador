@@ -12,12 +12,15 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Download, RefreshCw, CalendarDays, TrendingUp, Clock, UserCheck2,
-  UserX2, History,
+  UserX2, History, CheckCircle2, XCircle, FileText,
 } from 'lucide-react';
 import { TimesheetStatus } from '@fym/shared';
-import type { Timesheet, TimesheetSummary } from '@/lib/types/hr';
+import type { Employee, Timesheet, TimesheetSummary } from '@/lib/types/hr';
 
 const STATUS_LABELS: Record<string, string> = {
   [TimesheetStatus.PRESENT]: 'Presente',
@@ -36,10 +39,10 @@ function getCurrentMonth(): string {
 }
 
 export default function HrTimesheetsPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { addToast } = useToast();
 
-  const [tab, setTab] = useState<'records' | 'summary'>('summary');
+  const [tab, setTab] = useState<'weekly' | 'records' | 'summary'>('weekly');
   const [monthFilter, setMonthFilter] = useState(getCurrentMonth());
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -47,8 +50,14 @@ export default function HrTimesheetsPage() {
 
   const [records, setRecords] = useState<Timesheet[]>([]);
   const [summary, setSummary] = useState<TimesheetSummary[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<{ employee: Employee | null; date: string; timesheet?: Timesheet } | null>(null);
+  const [permissionOpen, setPermissionOpen] = useState(false);
+  const [permissionForm, setPermissionForm] = useState({ employeeId: '', date: new Date().toISOString().slice(0, 10), reason: '' });
+  const [permissionSaving, setPermissionSaving] = useState(false);
 
   const buildParams = useCallback(() => {
     const p = new URLSearchParams();
@@ -76,9 +85,22 @@ export default function HrTimesheetsPage() {
     }
   }, [token, buildParams, addToast]);
 
+  const loadEmployees = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await api.get<{ data: Employee[] }>('/hr/employees?status=ACTIVE', token);
+      setEmployees(res.data || []);
+    } catch {
+      setEmployees([]);
+    }
+  }, [token]);
+
   useEffect(() => {
-    if (token) load();
-  }, [token, load]);
+    if (token) {
+      load();
+      loadEmployees();
+    }
+  }, [token, load, loadEmployees]);
 
   const handleExport = async () => {
     if (!token) return;
@@ -99,6 +121,40 @@ export default function HrTimesheetsPage() {
   const totalPresent    = summary.reduce((a, s) => a + s.daysPresent, 0);
   const totalIncomplete = summary.reduce((a, s) => a + s.daysIncomplete, 0);
   const totalHours      = summary.reduce((a, s) => a + s.totalHours, 0);
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+
+  const submitPermission = async () => {
+    if (!token) return;
+    if (!permissionForm.employeeId || !permissionForm.date || !permissionForm.reason.trim()) {
+      addToast('Empleado, fecha y motivo son obligatorios', 'error');
+      return;
+    }
+    setPermissionSaving(true);
+    try {
+      await api.post('/hr/timesheets/permissions', permissionForm, token);
+      addToast('Solicitud de permiso registrada', 'success');
+      setPermissionOpen(false);
+      setPermissionForm((current) => ({ ...current, reason: '' }));
+      load();
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    } finally {
+      setPermissionSaving(false);
+    }
+  };
+
+  const resolvePermission = async (ts: Timesheet, status: 'APPROVED' | 'DENIED') => {
+    if (!token) return;
+    try {
+      await api.patch(`/hr/timesheets/${ts.id}/permission`, { status }, token);
+      addToast(status === 'APPROVED' ? 'Permiso aprobado como dia pagado' : 'Permiso denegado', 'success');
+      load();
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    }
+  };
+
+  const weeklyRows = buildWeeklyRows(records, summary);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -114,6 +170,9 @@ export default function HrTimesheetsPage() {
           </Button>
           <Button className="h-10 shadow-sm" onClick={handleExport} disabled={exporting}>
             <Download className="h-4 w-4 mr-2" /> {exporting ? 'Generando…' : 'Exportar Excel'}
+          </Button>
+          <Button variant="outline" className="h-10 bg-white shadow-sm" onClick={() => setPermissionOpen(true)}>
+            <FileText className="h-4 w-4 mr-2" /> Solicitud de Permiso
           </Button>
         </div>
       </div>
@@ -263,8 +322,14 @@ export default function HrTimesheetsPage() {
       </div>
 
       {/* Main Content Tabs */}
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'records' | 'summary')} className="w-full">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'weekly' | 'records' | 'summary')} className="w-full">
         <TabsList className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl h-12 gap-1 border border-slate-200 dark:border-slate-700">
+          <TabsTrigger
+            value="weekly"
+            className="rounded-lg px-6 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm data-[state=active]:text-primary font-bold transition-all"
+          >
+            Vista Semanal
+          </TabsTrigger>
           <TabsTrigger 
             value="summary" 
             className="rounded-lg px-6 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm data-[state=active]:text-primary font-bold transition-all"
@@ -280,6 +345,67 @@ export default function HrTimesheetsPage() {
         </TabsList>
 
         <div className="mt-8">
+          <TabsContent value="weekly">
+            <Card className="border-none shadow-sm overflow-hidden">
+              <div className="bg-slate-900 dark:bg-black p-4 flex items-center justify-between border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest">Matriz semanal de asistencia</h3>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">Checks por dia y total pagado</span>
+              </div>
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>
+                    <TableHead>Colaborador</TableHead>
+                    {WEEK_DAYS.map((day) => <TableHead key={day.key} className="text-center">{day.label}</TableHead>)}
+                    <TableHead className="text-right">Dias</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}><TableCell colSpan={8}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                    ))
+                  ) : weeklyRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="h-40 text-center text-slate-400">Sin asistencia para el periodo.</TableCell></TableRow>
+                  ) : weeklyRows.map((row) => (
+                    <TableRow key={row.employee?.id || row.employeeName}>
+                      <TableCell>
+                        <div className="font-bold text-slate-900">{row.employeeName}</div>
+                        <div className="text-[10px] font-mono text-slate-400">{row.employee?.documentNumber || '-'}</div>
+                      </TableCell>
+                      {WEEK_DAYS.map((day) => {
+                        const cell = row.days[day.key];
+                        return (
+                          <TableCell key={day.key} className="text-center">
+                            {cell ? (
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedDay({ employee: row.employee, date: cell.date, timesheet: cell.timesheet }); setDetailOpen(true); }}
+                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${
+                                  cell.permissionStatus === 'PENDING'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : cell.paid
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-rose-100 text-rose-700'
+                                }`}
+                                title="Ver detalle diario"
+                              >
+                                {cell.permissionStatus === 'PENDING' ? 'P' : cell.paid ? '✓' : '×'}
+                              </button>
+                            ) : <span className="text-slate-300">-</span>}
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell className="text-right font-mono font-black">{row.paidDays}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="summary">
             <Card className="border-none shadow-sm overflow-hidden">
               <div className="bg-slate-900 dark:bg-black p-4 flex items-center justify-between border-b border-slate-800">
@@ -415,16 +541,12 @@ export default function HrTimesheetsPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded">
-                            {ts.checkInTime
-                              ? new Date(ts.checkInTime).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })
-                              : '--:--'}
+                            {formatAttendanceTime(ts.checkInTime, 'in')}
                           </span>
                         </TableCell>
                         <TableCell className="text-center">
                           <span className={`font-mono text-xs font-black px-2 py-1 rounded ${ts.checkOutTime ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10' : 'text-amber-500 animate-pulse bg-amber-50 dark:bg-amber-500/10'}`}>
-                            {ts.checkOutTime
-                              ? new Date(ts.checkOutTime).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })
-                              : 'PEND.'}
+                            {ts.checkOutTime ? formatAttendanceTime(ts.checkOutTime, 'out') : 'PEND.'}
                           </span>
                         </TableCell>
                         <TableCell className="text-center">
@@ -437,8 +559,22 @@ export default function HrTimesheetsPage() {
                             variant={STATUS_VARIANT[ts.status] ?? 'outline'}
                             className="font-bold uppercase text-[9px] tracking-widest px-2 shadow-none border-none h-6 inline-flex items-center justify-center min-w-[80px]"
                           >
-                            {STATUS_LABELS[ts.status] ?? ts.status}
+                            {ts.permissionStatus === 'APPROVED'
+                              ? 'Permiso pagado'
+                              : ts.permissionStatus === 'PENDING'
+                                ? 'Permiso pendiente'
+                                : STATUS_LABELS[ts.status] ?? ts.status}
                           </Badge>
+                          {isAdmin && ts.permissionStatus === 'PENDING' && (
+                            <div className="mt-2 flex justify-end gap-1">
+                              <Button size="sm" variant="outline" className="h-7 px-2 text-emerald-700" onClick={() => resolvePermission(ts, 'APPROVED')}>
+                                <CheckCircle2 className="h-3 w-3" />
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 px-2 text-rose-700" onClick={() => resolvePermission(ts, 'DENIED')}>
+                                <XCircle className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -449,6 +585,134 @@ export default function HrTimesheetsPage() {
           </TabsContent>
         </div>
       </Tabs>
+
+      <Dialog open={permissionOpen} onOpenChange={setPermissionOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Solicitud de Permiso</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Empleado</Label>
+              <Select value={permissionForm.employeeId} onValueChange={(employeeId) => setPermissionForm((current) => ({ ...current, employeeId }))}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar empleado..." /></SelectTrigger>
+                <SelectContent>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>{employee.fullName} - {employee.documentNumber}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Input type="date" value={permissionForm.date} onChange={(e) => setPermissionForm((current) => ({ ...current, date: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Motivo</Label>
+              <Textarea value={permissionForm.reason} onChange={(e) => setPermissionForm((current) => ({ ...current, reason: e.target.value }))} placeholder="Emergencia familiar, salud, tramite documentario..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPermissionOpen(false)}>Cancelar</Button>
+            <Button onClick={submitPermission} disabled={permissionSaving}>{permissionSaving ? 'Guardando...' : 'Registrar solicitud'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Detalle diario</DialogTitle></DialogHeader>
+          {selectedDay && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-slate-50 p-3">
+                <p className="font-black text-slate-900">{selectedDay.employee?.fullName || 'Colaborador'}</p>
+                <p className="text-sm text-slate-500">{selectedDay.date}</p>
+                {selectedDay.timesheet?.permissionReason && <p className="mt-2 text-sm text-amber-700">Permiso: {selectedDay.timesheet.permissionReason}</p>}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <EvidenceCard title="Entrada" time={selectedDay.timesheet?.checkInTime} direction="in" photo={selectedDay.timesheet?.checkInAttendance?.photoUrl} />
+                <EvidenceCard title="Salida" time={selectedDay.timesheet?.checkOutTime} direction="out" photo={selectedDay.timesheet?.checkOutAttendance?.photoUrl} />
+              </div>
+            </div>
+          )}
+          <DialogFooter><Button variant="outline" onClick={() => setDetailOpen(false)}>Cerrar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+const WEEK_DAYS = [
+  { key: '1', label: 'Lun' },
+  { key: '2', label: 'Mar' },
+  { key: '3', label: 'Mie' },
+  { key: '4', label: 'Jue' },
+  { key: '5', label: 'Vie' },
+  { key: '6', label: 'Sab' },
+];
+
+function dayKey(date: string) {
+  const d = new Date(`${date}T12:00:00`);
+  const day = d.getDay();
+  return day === 0 ? '7' : String(day);
+}
+
+function buildWeeklyRows(records: Timesheet[], summary: TimesheetSummary[]) {
+  const employees = new Map<string, Employee | null>();
+  summary.forEach((item) => employees.set(item.employee?.id || '', item.employee));
+  records.forEach((item) => employees.set(item.employeeId, item.employee || employees.get(item.employeeId) || null));
+
+  return Array.from(employees.entries())
+    .filter(([id]) => Boolean(id))
+    .map(([employeeId, employee]) => {
+      const own = records.filter((item) => item.employeeId === employeeId);
+      const days: Record<string, any> = {};
+      let paidDays = 0;
+      for (const item of own) {
+        const key = dayKey(item.date);
+        if (key === '7') continue;
+        const paid = Number(item.paidDays || 0) > 0 || item.status === TimesheetStatus.PRESENT;
+        paidDays += Number(item.paidDays ?? (paid ? 1 : 0));
+        days[key] = { date: item.date, timesheet: item, paid, permissionStatus: item.permissionStatus };
+      }
+      return { employee, employeeName: employee?.fullName || employeeId, days, paidDays };
+    })
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+}
+
+function roundTimeForDisplay(value: string | Date, direction: 'in' | 'out') {
+  const date = new Date(value);
+  const rounded = new Date(date);
+  const minutesFromStart = rounded.getHours() * 60 + rounded.getMinutes();
+  const roundedMinutes =
+    direction === 'in'
+      ? Math.ceil(minutesFromStart / 30) * 30
+      : Math.floor(minutesFromStart / 30) * 30;
+  rounded.setHours(0, roundedMinutes, 0, 0);
+  return rounded;
+}
+
+function formatAttendanceTime(value?: string | null, direction: 'in' | 'out' = 'in', withSeconds = false) {
+  if (!value) return '--:--';
+  return roundTimeForDisplay(value, direction).toLocaleTimeString('es-PE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: withSeconds ? '2-digit' : undefined,
+    hour12: false,
+  });
+}
+
+function EvidenceCard({ title, time, direction, photo }: { title: string; time?: string | null; direction: 'in' | 'out'; photo?: string | null }) {
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <p className="text-xs font-black uppercase tracking-widest text-slate-400">{title}</p>
+      <p className="mt-1 font-mono text-lg font-black text-slate-900">
+        {formatAttendanceTime(time, direction, true)}
+      </p>
+      {photo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={photo} alt={title} className="mt-3 h-56 w-full rounded-md object-cover" />
+      ) : (
+        <div className="mt-3 flex h-56 items-center justify-center rounded-md bg-slate-100 text-sm text-slate-400">Sin foto</div>
+      )}
     </div>
   );
 }

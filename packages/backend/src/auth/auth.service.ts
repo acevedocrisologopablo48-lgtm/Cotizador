@@ -162,6 +162,142 @@ export class AuthService {
     return this.firebase.docsToArray(snap.docs).map(({ passwordHash, firebaseUid, ...u }: any) => u);
   }
 
+  async listNotifications(userId: string) {
+    const snap = await this.firebase.db
+      .collection('notifications')
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+
+    return this.firebase.docsToArray(snap.docs);
+  }
+
+  async markNotificationRead(userId: string, notificationId: string) {
+    const ref = this.firebase.db.collection('notifications').doc(notificationId);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data()?.userId !== userId) {
+      throw new NotFoundException('Notificacion no encontrada');
+    }
+
+    await ref.update({ read: true, readAt: new Date(), updatedAt: new Date() });
+    return { id: notificationId, read: true };
+  }
+
+  async updateUser(userId: string, data: {
+    email?: string;
+    fullName?: string;
+    phone?: string;
+    role?: string;
+    isActive?: boolean;
+    allowedProjectIds?: string[];
+  }) {
+    const doc = await this.firebase.db.collection('users').doc(userId).get();
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado');
+
+    const user = doc.data() as any;
+    const updateData: Record<string, any> = { updatedAt: new Date() };
+    const authUpdate: Record<string, any> = {};
+
+    if (typeof data.email === 'string' && data.email.trim() && data.email.trim() !== user.email) {
+      const email = data.email.trim().toLowerCase();
+      const existing = await this.firebase.db
+        .collection('users')
+        .where('email', '==', email)
+        .limit(1)
+        .get();
+      if (!existing.empty && existing.docs[0].id !== userId) {
+        throw new ConflictException('El email ya estÃ¡ registrado');
+      }
+      updateData.email = email;
+      authUpdate.email = email;
+    }
+
+    if (typeof data.fullName === 'string' && data.fullName.trim()) {
+      updateData.fullName = data.fullName.trim();
+      authUpdate.displayName = updateData.fullName;
+    }
+
+    if (data.phone !== undefined) {
+      const phone = typeof data.phone === 'string' ? data.phone.trim() : '';
+      updateData.phone = phone || null;
+    }
+
+    const nextRole = data.role || user.role;
+    if (data.role && data.role !== user.role) {
+      updateData.role = data.role;
+      updateData.allowedProjectIds =
+        data.role === 'CLIENT'
+          ? this.normalizeProjectIds(data.allowedProjectIds)
+          : [];
+    } else if (nextRole === 'CLIENT' && data.allowedProjectIds !== undefined) {
+      updateData.allowedProjectIds = this.normalizeProjectIds(data.allowedProjectIds);
+    } else if (nextRole !== 'CLIENT') {
+      updateData.allowedProjectIds = [];
+    }
+
+    if (typeof data.isActive === 'boolean') {
+      updateData.isActive = data.isActive;
+      authUpdate.disabled = !data.isActive;
+    }
+
+    const previousSnapshot = {
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone ?? null,
+      role: user.role,
+      isActive: user.isActive,
+      allowedProjectIds: Array.isArray(user.allowedProjectIds) ? user.allowedProjectIds : [],
+    };
+
+    if (user.firebaseUid && Object.keys(authUpdate).length > 0) {
+      try {
+        await this.firebase.auth.updateUser(user.firebaseUid, authUpdate);
+      } catch (error: any) {
+        if (error?.code === 'auth/email-already-exists') {
+          throw new ConflictException('El email ya estÃ¡ registrado en Firebase Auth');
+        }
+        this.logger.error(
+          `auth.updateUser fallÃ³ para ${user.firebaseUid}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        throw new InternalServerErrorException('No se pudo actualizar el usuario en Firebase Auth');
+      }
+    }
+
+    try {
+      await this.firebase.db.collection('users').doc(userId).update(updateData);
+      if (user.firebaseUid && data.role && data.role !== user.role) {
+        await this.firebase.auth.setCustomUserClaims(user.firebaseUid, { role: data.role });
+      }
+    } catch (error) {
+      this.logger.error(
+        `FallÃ³ updateUser en Firestore/claims para ${userId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      if (user.firebaseUid && Object.keys(authUpdate).length > 0) {
+        try {
+          await this.firebase.auth.updateUser(user.firebaseUid, {
+            email: previousSnapshot.email,
+            displayName: previousSnapshot.fullName,
+            disabled: !previousSnapshot.isActive,
+          });
+          await this.firebase.auth.setCustomUserClaims(user.firebaseUid, { role: previousSnapshot.role });
+        } catch (rollbackError) {
+          this.logger.error(
+            `No se pudo revertir Auth para ${user.firebaseUid}`,
+            rollbackError instanceof Error ? rollbackError.stack : String(rollbackError),
+          );
+        }
+      }
+      throw new InternalServerErrorException('No se pudo actualizar el usuario');
+    }
+
+    const updated = await this.getProfile(userId);
+    await this.attachAllowedProjects([updated]);
+    return updated;
+  }
+
   async updateUserRole(userId: string, role: string) {
     const doc = await this.firebase.db.collection('users').doc(userId).get();
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado');

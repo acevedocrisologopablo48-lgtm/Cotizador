@@ -25,9 +25,15 @@ export function QuotationPrintSimple({
   const ct = quotation.commercialTerms && typeof quotation.commercialTerms === 'object' ? quotation.commercialTerms : {};
   const showTax = quotation.showTaxBreakdown !== false;
   const includeIgv = quotation.pricesIncludeIgv === true;
-  const draft = quotation.status === 'DRAFT' || quotation.status === 'REVIEW';
   const qNum = quotation.quotationNumber || `COT-${quotationId.slice(0, 5).toUpperCase()}`;
   const rev = quotation.revisionLabel ? ` (${quotation.revisionLabel})` : '';
+  const signer = quotation.creator || {};
+  const signatureUrl = signer.signatureUrl || signer.digitalSignatureUrl || companySettings?.signatureUrl;
+  const signerName = signer.fullName || companySettings?.legalRepresentative || companySettings?.name;
+  const signerRole = signer.roleLabel || signer.role || companySettings?.legalRepresentativeRole || 'Representante Legal';
+  const directSubtotal = Number(quotation.directSubtotal ?? quotation.subtotalBeforeDiscount ?? quotation.subtotal ?? 0);
+  const generalExpensesAmount = Number(quotation.generalExpensesAmount || 0);
+  const commercialDiscountAmount = Number(quotation.commercialDiscountAmount || 0);
 
   const taxNote = showTax
     ? includeIgv
@@ -38,23 +44,6 @@ export function QuotationPrintSimple({
   let itemIdx = 0;
   return (
     <div className="hidden print:block font-sans bg-white text-black min-h-screen relative" style={{ padding: '14mm 15mm 22mm 15mm' }}>
-      {draft && (
-        <div
-          className="pointer-events-none select-none"
-          style={{
-            position: 'fixed',
-            top: '38%',
-            left: '18%',
-            transform: 'rotate(-24deg)',
-            fontSize: '44pt',
-            color: 'rgba(148,163,184,0.15)',
-            fontWeight: 900,
-            zIndex: 0,
-          }}
-        >
-          BORRADOR
-        </div>
-      )}
       <div className="relative z-[1]">
         <div className="flex justify-between items-start mb-8 border-b-[3px] border-[#1e3a5f] pb-5">
           <div>
@@ -140,6 +129,24 @@ export function QuotationPrintSimple({
 
         <div className="flex justify-end mb-8 break-inside-avoid">
           <div className="w-72 border border-slate-200 rounded overflow-hidden shadow-sm">
+            {directSubtotal > 0 && (generalExpensesAmount > 0 || commercialDiscountAmount > 0) && (
+              <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
+                <span className="text-slate-600 font-bold uppercase text-[8.5pt]">Costo directo</span>
+                <span className="font-mono font-bold">{fmt(directSubtotal)}</span>
+              </div>
+            )}
+            {generalExpensesAmount > 0 && (
+              <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
+                <span className="text-slate-600 font-bold uppercase text-[8.5pt]">Gastos + utilidad ({quotation.generalExpensesPercentage ?? 0}%)</span>
+                <span className="font-mono font-bold">{fmt(generalExpensesAmount)}</span>
+              </div>
+            )}
+            {commercialDiscountAmount > 0 && (
+              <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
+                <span className="text-slate-600 font-bold uppercase text-[8.5pt]">Descuento comercial ({quotation.commercialDiscountPercentage ?? 0}%)</span>
+                <span className="font-mono font-bold">-{fmt(commercialDiscountAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-[9pt]">
               <span className="text-slate-600 font-bold uppercase text-[8.5pt]">Subtotal operativo</span>
               <span className="font-mono font-bold">{fmt(quotation.subtotal || 0)}</span>
@@ -222,15 +229,15 @@ export function QuotationPrintSimple({
             )}
           </div>
           <div className="flex flex-col items-center justify-end pb-2">
-            {companySettings?.signatureUrl && (
-              <img src={companySettings.signatureUrl} alt="Firma" className="max-h-[76px] object-contain mb-2" />
+            {signatureUrl && (
+              <img src={signatureUrl} alt="Firma" className="max-h-[76px] object-contain mb-2" />
             )}
             <div className="w-4/5 border-t border-slate-400 pt-2 text-center">
               <p className="text-[9pt] font-extrabold text-slate-900 m-0">
-                {companySettings?.legalRepresentative || companySettings?.name}
+                {signerName}
               </p>
               <p className="text-[7.5pt] text-slate-500 m-0 mt-1">
-                {companySettings?.legalRepresentativeRole || 'Representante Legal'}
+                {signerRole}
               </p>
             </div>
           </div>

@@ -8,7 +8,9 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { EmployeesService } from '../services/employees.service';
 import { FirebaseAuthGuard, RolesGuard } from '../../common/guards';
@@ -34,6 +36,51 @@ export class EmployeesController {
   ) {
     const data = await this.service.findAll(status, search);
     return { data };
+  }
+
+  @Get('exports/sctr')
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Exportar matriz de personal para Seguro SCTR' })
+  async exportSctr(@Res() res: Response) {
+    const buffer = await this.service.exportSctrExcel();
+    const label = new Date().toISOString().slice(0, 7);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="personal-sctr-${label}.xlsx"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  }
+
+  @Post('exports/sctr')
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Exportar matriz SCTR con personal seleccionado' })
+  async exportSelectedSctr(@Body() dto: { employeeIds?: string[] }, @Res() res: Response) {
+    const buffer = await this.service.exportSctrExcel(dto.employeeIds);
+    const label = new Date().toISOString().slice(0, 7);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="personal-sctr-${label}.xlsx"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  }
+
+  @Post('exports/project-personnel')
+  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT', 'ENGINEER')
+  @ApiOperation({ summary: 'Exportar listado de personal para ejecucion de proyecto en PDF' })
+  async exportProjectPersonnel(
+    @Body() dto: { projectId: string; employeeIds: string[] },
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const result = await this.service.exportProjectPersonnelPdf(dto.projectId, dto.employeeIds, req.user.id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Content-Length', result.buffer.length);
+    res.send(result.buffer);
   }
 
   @Get(':id')

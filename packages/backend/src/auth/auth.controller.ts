@@ -30,6 +30,34 @@ class UpdateStatusDto {
   isActive: boolean;
 }
 
+class UpdateUserDto {
+  @IsEmail()
+  @IsOptional()
+  email?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @IsOptional()
+  fullName?: string;
+
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @IsIn(SYSTEM_ROLES)
+  @IsOptional()
+  role?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  allowedProjectIds?: string[];
+}
+
 class CreateUserDto {
   @IsEmail()
   email: string;
@@ -96,6 +124,34 @@ export class AuthController {
   async listAssignableUsers() {
     const users = await this.authService.listAssignableUsers();
     return { data: users };
+  }
+
+  @Get('notifications')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  async listNotifications(@CurrentUser('id') userId: string) {
+    const notifications = await this.authService.listNotifications(userId);
+    return { data: notifications };
+  }
+
+  @Put('notifications/:id/read')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  async markNotificationRead(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    const result = await this.authService.markNotificationRead(userId, id);
+    return { data: result };
+  }
+
+  @Put('users/:id')
+  @UseGuards(FirebaseAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  async updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    const result = await this.authService.updateUser(id, dto);
+    return { data: result };
   }
 
   @Put('users/:id/role')

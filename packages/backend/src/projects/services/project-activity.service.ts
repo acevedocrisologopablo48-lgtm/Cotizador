@@ -46,6 +46,30 @@ export class ProjectActivityService {
       .limit(limit)
       .get();
 
-    return this.firebase.docsToArray(snap.docs);
+    const logs = this.firebase.docsToArray(snap.docs);
+    const missingNameUserIds = Array.from(new Set(
+      logs
+        .filter((log: any) => !String(log.userName || '').trim() && log.userId)
+        .map((log: any) => String(log.userId)),
+    ));
+
+    if (missingNameUserIds.length === 0) return logs;
+
+    const refs = missingNameUserIds.map((id) => this.firebase.db.collection('users').doc(id));
+    const docs = await this.firebase.db.getAll(...refs);
+    const userMap = new Map(
+      docs
+        .filter((doc) => doc.exists)
+        .map((doc) => [doc.id, doc.data() as any]),
+    );
+
+    return logs.map((log: any) => {
+      if (String(log.userName || '').trim() || !log.userId) return log;
+      const user = userMap.get(String(log.userId));
+      return {
+        ...log,
+        userName: user?.fullName || user?.email || 'Usuario del sistema',
+      };
+    });
   }
 }

@@ -40,16 +40,16 @@ export function ProjectManagementModule({ projectId }: ProjectManagementModulePr
     <div className="space-y-6">
       <Tabs defaultValue="kanban" className="w-full">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <TabsList className="bg-slate-950/20 border border-white/[0.05] p-1.5 rounded-2xl h-auto flex flex-wrap gap-2">
-          <TabsTrigger value="kanban" className="rounded-xl px-6 py-2.5 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all flex items-center">
+          <TabsList className="h-auto flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+          <TabsTrigger value="kanban" className="rounded-md px-4 py-2 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all flex items-center">
             <Kanban className="mr-2 h-4 w-4" />
             Tablero Kanban
           </TabsTrigger>
-          <TabsTrigger value="gantt" className="rounded-xl px-6 py-2.5 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all flex items-center">
+          <TabsTrigger value="gantt" className="rounded-md px-4 py-2 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all flex items-center">
             <BarChartHorizontal className="mr-2 h-4 w-4" />
             Cronograma Gantt
           </TabsTrigger>
-          <TabsTrigger value="activity" className="rounded-xl px-6 py-2.5 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all flex items-center">
+          <TabsTrigger value="activity" className="rounded-md px-4 py-2 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white transition-all flex items-center">
             <Activity className="mr-2 h-4 w-4" />
             Actividad
           </TabsTrigger>
@@ -60,7 +60,7 @@ export function ProjectManagementModule({ projectId }: ProjectManagementModulePr
             <Plus className="mr-2 h-4 w-4" />
             Nueva Tarea
           </Button>
-          <Button onClick={() => setIsMilestoneDialogOpen(true)} disabled={loadingMilestones} variant="outline" className="rounded-xl border-white/[0.1] bg-white/5 hover:bg-white/10 text-white">
+          <Button onClick={() => setIsMilestoneDialogOpen(true)} disabled={loadingMilestones} variant="outline" className="rounded-xl">
             <Target className="mr-2 h-4 w-4" />
             Nuevo Hito
           </Button>
@@ -88,8 +88,8 @@ export function ProjectManagementModule({ projectId }: ProjectManagementModulePr
         </TabsContent>
 
         <TabsContent value="activity" className="mt-0 focus-visible:outline-none">
-          <Card className="border-white/[0.05] bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] p-6 max-w-3xl">
-            <h3 className="font-semibold text-lg mb-6 text-white">Registro de Actividad</h3>
+          <Card className="rounded-lg border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="font-semibold text-lg mb-6 text-slate-900">Registro de Actividad</h3>
             <ProjectActivity projectId={projectId} refreshKey={refreshKey} />
           </Card>
         </TabsContent>

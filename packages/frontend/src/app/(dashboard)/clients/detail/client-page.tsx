@@ -54,10 +54,41 @@ export interface Agreement {
   paymentMethod: string;
   billingCurrency: string;
   retentionPercentage: number;
+  paymentTerms?: string | null;
+  executionLocation?: string | null;
+  executionTime?: string | null;
   specialConditions: string | null;
   validFrom: string | null;
   validUntil: string | null;
   isActive: boolean;
+}
+
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === 'object') {
+    const candidate = value as { seconds?: number; _seconds?: number };
+    const seconds = candidate.seconds ?? candidate._seconds;
+    if (typeof seconds === 'number') return new Date(seconds * 1000);
+  }
+  return null;
+}
+
+function commercialAgeLabel(createdAt: unknown): string {
+  const created = toDate(createdAt);
+  if (!created) return 'Sin fecha';
+  const now = new Date();
+  let years = now.getFullYear() - created.getFullYear();
+  const hasNotHadAnniversary =
+    now.getMonth() < created.getMonth() ||
+    (now.getMonth() === created.getMonth() && now.getDate() < created.getDate());
+  if (hasNotHadAnniversary) years -= 1;
+  if (years <= 0) return 'Nuevo';
+  return `${years} ${years === 1 ? 'año' : 'años'}`;
 }
 
 export default function ClientDetailPage() {
@@ -337,7 +368,7 @@ export default function ClientDetailPage() {
               <div className="space-y-1">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Antigüedad Comercial</p>
                 <p className="text-3xl font-black font-mono tracking-tighter text-slate-900 dark:text-white">
-                  {new Date().getFullYear() - new Date(company.createdAt).getFullYear()}y
+                  {commercialAgeLabel(company.createdAt)}
                 </p>
               </div>
               <div className="p-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20 group-hover:scale-110 transition-transform">
